@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using System;
 
 public class LocomotionTechnique : MonoBehaviour
 {
@@ -25,13 +26,18 @@ public class LocomotionTechnique : MonoBehaviour
     private float jumpMagnitude= 5f;          
 
     private float verticalVelocity = 0f;
-    bool isOnGround = true;
 
+    float prevLeftY = 0.0f;
+    float prevRightY = 0.0f;
 
     void Start()
     {
-        
+        prevLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
+        prevRightY = OVRInput.GetLocalControllerPosition(rightController).y;
+
     }
+    float walkingSpeed = 4.5f;   // to modify maybe, kinda too slow
+    float currentSpeed = 0f;      
 
     void Update()
     {
@@ -44,7 +50,6 @@ public class LocomotionTechnique : MonoBehaviour
         if (rightTriggerValue >0.95f) // i kept it like that so that we can jump as many times as we want, maybe put condition?
         {
             verticalVelocity = jumpMagnitude;
-            isOnGround =false;
         }
 
         verticalVelocity += gravity * Time.deltaTime;
@@ -55,12 +60,66 @@ public class LocomotionTechnique : MonoBehaviour
         {
             transform.position = new Vector3(transform.position.x, 0f, transform.position.z );
             verticalVelocity = 0.0f;
-            isOnGround=true; // back on the ground
         }
 
 
         // WALK
-        // offset = hmd.transform.forward.normalized *
+        // https://developers.meta.com/horizon/documentation/unity/unity-ovrinput/
+        
+        // here im not using 20cm detection, we're always walking no matter the distance of the swinging  
+        float currentLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
+        float currentRightY = OVRInput.GetLocalControllerPosition(rightController).y;
+
+        float leftDifference = Math.Abs(currentLeftY- prevLeftY);
+        float rightDifference = Math.Abs(currentRightY- prevRightY);
+
+        bool isSwinging = (leftDifference+rightDifference)> 0.01f; // here it's swinging if we slightly move the controllers
+        
+        float newSpeed = 0.0f;
+        if (isSwinging) newSpeed = walkingSpeed;
+
+        currentSpeed = Mathf.Lerp(currentSpeed, newSpeed, 6f * Time.deltaTime); // to make it smooth, that's what i struggled with with the code below 
+        // this do a linear interpolation between currentSpeed (current walking speed), new walking speed, depending on a time factor
+        // this gradually move currentSpeed toward newSpeed over time
+        // so that we move but it doesn't jump immediately 
+        transform.position += hmd.transform.forward * currentSpeed * Time.deltaTime;
+
+        prevLeftY = currentLeftY;
+        prevRightY = currentRightY;
+
+
+        // works kinda; but weird effect when walking, very "buggy" effect ; with 20cm limit
+
+        // float currentLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
+        // float currentRightY = OVRInput.GetLocalControllerPosition(rightController).y;
+
+//         float thresholdWalkDetection = 0.2f; // make it bigger
+//         float leftDifference = Math.Abs(currentLeftY- prevLeftY);
+//         float rightDifference = Math.Abs(currentRightY- prevRightY);
+
+//         totalLeftDist +=leftDifference;
+//         totalRightDist +=rightDifference;
+//         offset = Vector3.zero;
+//         float stepScale = 4.0f; // meters per total threshold
+
+//         if (totalLeftDist > thresholdWalkDetection)
+//         {
+//             offset += hmd.transform.forward.normalized * stepScale; // 1 step?
+//             totalLeftDist =0.0f;
+//         }
+//         if (totalRightDist> thresholdWalkDetection)
+//         {
+//             offset += hmd.transform.forward.normalized * stepScale;
+
+//             totalRightDist = 0.0f;
+
+//         }
+
+//         prevLeftY = currentLeftY;
+//         prevRightY = currentRightY;
+
+//         transform.position = transform.position + offset;// * translationGain;
+
 
 
         // PROF'S CODE
@@ -106,7 +165,6 @@ public class LocomotionTechnique : MonoBehaviour
         //         offset = Vector3.zero;
         //     }
         // }
-        transform.position = transform.position + offset * translationGain;
 
 
         ////////////////////////////////////////////////////////////////////////////////
