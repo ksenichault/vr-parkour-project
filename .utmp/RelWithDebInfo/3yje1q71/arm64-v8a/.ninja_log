@@ -1,0 +1,10 @@
+# ninja log v5
+2	1546	1768917979624595560	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	891353a73b987804
+3	1645	1768917979722471202	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	a3d8eef7a49feb3b
+2	1680	1768917979757041672	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	45fca1f296243125
+1	1774	1768917979850969066	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	504e411128a463d5
+1	1783	1768917979860115949	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	4e948eb14ce45435
+3	1833	1768917979911052790	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	d92a9a0ab2260fd2
+2	1961	1768917980038783688	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	7fd9c45a650663b5
+0	1996	1768917980074664088	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	6d6c8ab4639d9cd5
+1997	2114	1768917980193876568	/Users/ksenichault/Desktop/M2/vr/Parkour/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/3yje1q71/obj/arm64-v8a/libgame.so	af0598872dfbc497

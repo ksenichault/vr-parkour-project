@@ -1,0 +1,2 @@
+/Users/ksenichault/Desktop/M2/vr/Parkour/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/CMakeLists.txt
+/Users/ksenichault/Desktop/M2/vr/Parkour/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/CMakeLists.txt
