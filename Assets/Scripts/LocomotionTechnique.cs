@@ -19,7 +19,15 @@ public class LocomotionTechnique : MonoBehaviour
     public ParkourCounter parkourCounter;
     public string stage;
     public SelectionTaskMeasure selectionTaskMeasure;
-    
+
+    // added
+    private float gravity = -9.81f;        
+    private float jumpMagnitude= 5f;          
+
+    private float verticalVelocity = 0f;
+    bool isOnGround = true;
+
+
     void Start()
     {
         
@@ -32,48 +40,72 @@ public class LocomotionTechnique : MonoBehaviour
         leftTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, leftController); 
         rightTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, rightController); 
 
-        if (leftTriggerValue > 0.95f && rightTriggerValue > 0.95f)
+        // JUMP
+        if (rightTriggerValue >0.95f) // i kept it like that so that we can jump as many times as we want, maybe put condition?
         {
-            if (!isIndexTriggerDown)
-            {
-                isIndexTriggerDown = true;
-                startPos = (OVRInput.GetLocalControllerPosition(leftController) + OVRInput.GetLocalControllerPosition(rightController)) / 2;
-            }
-            offset = hmd.transform.forward.normalized *
-                    (OVRInput.GetLocalControllerPosition(leftController) - startPos +
-                    (OVRInput.GetLocalControllerPosition(rightController) - startPos)).magnitude;
-            Debug.DrawRay(startPos, offset, Color.red, 0.2f);
+            verticalVelocity = jumpMagnitude;
+            isOnGround =false;
         }
-        else if (leftTriggerValue > 0.95f && rightTriggerValue < 0.95f)
+
+        verticalVelocity += gravity * Time.deltaTime;
+        transform.position += new Vector3(0, verticalVelocity * Time.deltaTime, 0); // offset
+
+        // if below ground, stop at ground and stay there
+        if (transform.position.y<=0.0f) 
         {
-            if (!isIndexTriggerDown)
-            {
-                isIndexTriggerDown = true;
-                startPos = OVRInput.GetLocalControllerPosition(leftController);
-            }
-            offset = hmd.transform.forward.normalized *
-                     (OVRInput.GetLocalControllerPosition(leftController) - startPos).magnitude;
-            Debug.DrawRay(startPos, offset, Color.red, 0.2f);
+            transform.position = new Vector3(transform.position.x, 0f, transform.position.z );
+            verticalVelocity = 0.0f;
+            isOnGround=true; // back on the ground
         }
-        else if (leftTriggerValue < 0.95f && rightTriggerValue > 0.95f)
-        {
-            if (!isIndexTriggerDown)
-            {
-                isIndexTriggerDown = true;
-                startPos = OVRInput.GetLocalControllerPosition(rightController);
-            }
-           offset = hmd.transform.forward.normalized *
-                    (OVRInput.GetLocalControllerPosition(rightController) - startPos).magnitude;
-            Debug.DrawRay(startPos, offset, Color.red, 0.2f);
-        }
-        else
-        {
-            if (isIndexTriggerDown)
-            {
-                isIndexTriggerDown = false;
-                offset = Vector3.zero;
-            }
-        }
+
+
+        // WALK
+        // offset = hmd.transform.forward.normalized *
+
+
+        // PROF'S CODE
+        // if (leftTriggerValue > 0.95f && rightTriggerValue > 0.95f)
+        // {
+        //     if (!isIndexTriggerDown)
+        //     {
+        //         isIndexTriggerDown = true;
+        //         startPos = (OVRInput.GetLocalControllerPosition(leftController) + OVRInput.GetLocalControllerPosition(rightController)) / 2;
+        //     }
+        //     offset = hmd.transform.forward.normalized *
+        //             (OVRInput.GetLocalControllerPosition(leftController) - startPos +
+        //             (OVRInput.GetLocalControllerPosition(rightController) - startPos)).magnitude;
+        //     Debug.DrawRay(startPos, offset, Color.red, 0.2f);
+        // }
+        // else if (leftTriggerValue > 0.95f && rightTriggerValue < 0.95f)
+        // {
+        //     if (!isIndexTriggerDown)
+        //     {
+        //         isIndexTriggerDown = true;
+        //         startPos = OVRInput.GetLocalControllerPosition(leftController);
+        //     }
+        //     offset = hmd.transform.forward.normalized *
+        //              (OVRInput.GetLocalControllerPosition(leftController) - startPos).magnitude;
+        //     Debug.DrawRay(startPos, offset, Color.red, 0.2f);
+        // }
+        // else if (leftTriggerValue < 0.95f && rightTriggerValue > 0.95f)
+        // {
+        //     if (!isIndexTriggerDown)
+        //     {
+        //         isIndexTriggerDown = true;
+        //         startPos = OVRInput.GetLocalControllerPosition(rightController);
+        //     }
+        //    offset = hmd.transform.forward.normalized *
+        //             (OVRInput.GetLocalControllerPosition(rightController) - startPos).magnitude;
+        //     Debug.DrawRay(startPos, offset, Color.red, 0.2f);
+        // }
+        // else
+        // {
+        //     if (isIndexTriggerDown)
+        //     {
+        //         isIndexTriggerDown = false;
+        //         offset = Vector3.zero;
+        //     }
+        // }
         transform.position = transform.position + offset * translationGain;
 
 
