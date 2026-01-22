@@ -73,10 +73,15 @@ public class LocomotionTechnique : MonoBehaviour
         float leftDifference = Math.Abs(currentLeftY- prevLeftY);
         float rightDifference = Math.Abs(currentRightY- prevRightY);
 
-        bool isSwinging = (leftDifference+rightDifference)> 0.01f; // here it's swinging if we slightly move the controllers
-        
+        // bool isSwinging = (leftDifference+rightDifference)> 0.01f; // here it's swinging if we slightly move the controllers
+        float effort = leftDifference + rightDifference;
+
+        if (effort < 0.01f) effort = 0f;
+
         float newSpeed = 0.0f;
-        if (isSwinging) newSpeed = walkingSpeed;
+        // if (isSwinging) newSpeed = walkingSpeed*effort;
+        float sensitivity = 50f; 
+        newSpeed = walkingSpeed * Mathf.Clamp(effort * sensitivity, 0f, 1f);
 
         currentSpeed = Mathf.Lerp(currentSpeed, newSpeed, 6f * Time.deltaTime); // to make it smooth, that's what i struggled with with the code below 
         // this do a linear interpolation between currentSpeed (current walking speed), new walking speed, depending on a time factor
