@@ -1,0 +1,17 @@
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/GAToUnityCallbacks.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/MacroEnd.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/MacroHeaderBegin.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/MacroSourceBegin.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UGAApplication.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UGAConfiguration.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UGADebug.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UGAEvents.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UGAInput.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UGASoftKeyboard.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UGASoftKeyboardCallbacks.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UGATypes.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UGAVersion.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UnityToGACallbacks.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UnityToGAConfigurationCallbacks.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UnityToGAKeyEventCallbacks.h
+/Users/nazrinnasirova/Desktop/XR/vr-parkour-project/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UnityToGAMotionEventCallbacks.h
