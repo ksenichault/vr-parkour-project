@@ -1,5 +1,7 @@
 ﻿using UnityEngine;
 using System;
+// using System.Diagnostics;
+// using System.Diagnostics;
 
 public class LocomotionTechnique : MonoBehaviour
 {    
@@ -25,12 +27,17 @@ public class LocomotionTechnique : MonoBehaviour
 
      // added
     private float gravity = -9.81f;        
-    private float jumpMagnitude= 5f;          
+    private float jumpMagnitude= 10.0f;          
 
     private float verticalVelocity = 0f;
 
     float prevLeftY = 0.0f;
     float prevRightY = 0.0f;
+
+    private AudioSource stepAudio;
+    private AudioSource propulsionAudio;
+    bool canPlayStep = true;
+
 
     [Header("Skates (Visual)")]
     public Transform leftSkate;
@@ -55,6 +62,55 @@ public class LocomotionTechnique : MonoBehaviour
 
     private float skatePhase = 0f;
     private Vector3 prevRigPos;
+
+    private GameObject leftFire;
+    private GameObject rightFire;
+
+    private GameObject fireEffectPrefab;
+
+    private GameObject stepAudioPrefab;
+    private GameObject propulsionAudioPrefab;
+
+
+    void Awake()
+    {
+        if (fireEffectPrefab == null)
+        {
+            fireEffectPrefab = Resources.Load<GameObject>("CartoonFire");
+        }
+        if (stepAudioPrefab == null)
+        {
+            stepAudioPrefab = Resources.Load<GameObject>("StepAudioPrefab");
+        }
+
+        if (propulsionAudioPrefab == null)
+        {
+            propulsionAudioPrefab = Resources.Load<GameObject>("PropulsionAudioPrefab");
+        }
+
+        if (stepAudioPrefab == null)
+        {
+            Debug.Log("MYLOG step audio prefab null");
+        }
+        if (propulsionAudioPrefab == null)
+        {
+            Debug.Log("MYLOG propulsion audio prefab null");
+        }
+
+        if (stepAudioPrefab != null)
+        {
+            GameObject step = Instantiate(stepAudioPrefab, transform);
+            stepAudio = step.GetComponent<AudioSource>();
+        }
+
+        if (propulsionAudioPrefab != null)
+        {
+            GameObject propObj = Instantiate(propulsionAudioPrefab, transform);
+            propulsionAudio = propObj.GetComponent<AudioSource>();
+        }
+        
+    }
+
     void Start()
     {
         prevLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
@@ -65,9 +121,26 @@ public class LocomotionTechnique : MonoBehaviour
         // Initialize skate positions to rest
         if (leftSkate != null) leftSkate.localPosition = leftFootLocalOffset;
         if (rightSkate != null) rightSkate.localPosition = rightFootLocalOffset;
+
+        Vector3 leftFireOffset = new Vector3(-0.01f, -0.05f, 0f); 
+        Vector3 rightFireOffset = new Vector3(0.01f, -0.05f, 0f); 
+
+        leftFire = Instantiate(fireEffectPrefab, leftSkate );
+        
+        leftFire.transform.localPosition = leftFireOffset;
+        leftFire.transform.localRotation = Quaternion.Euler(-180f, 0f, 0f);
+        leftFire.SetActive(false);
+
+        rightFire = Instantiate(fireEffectPrefab, rightSkate);
+        rightFire.transform.localPosition = rightFireOffset;
+        rightFire.transform.localRotation = Quaternion.Euler(-180f, 0f, 0f);
+        rightFire.SetActive(false);
+
     }
-   float walkingSpeed = 4.5f;   // to modify maybe, kinda too slow
+    float walkingSpeed = 7.0f;   // to modify maybe, kinda too slow
     float currentSpeed = 0f;      
+
+    Vector3 velocity = Vector3.zero; // current movement velocity
 
     void Update()
     {
@@ -77,12 +150,26 @@ public class LocomotionTechnique : MonoBehaviour
         rightTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, rightController); 
 
         // JUMP
-        if (rightTriggerValue >0.95f) // i kept it like that so that we can jump as many times as we want, maybe put condition?
+        // the raising arms 
+        
+        Vector3 leftPos = OVRInput.GetLocalControllerPosition(leftController);
+        Vector3 rightPos = OVRInput.GetLocalControllerPosition(rightController);
+
+        float headHeight = hmd.transform.position.y;
+        bool handsUp = leftPos.y >= headHeight && rightPos.y >= headHeight;
+
+        if (leftTriggerValue > 0.95f && rightTriggerValue > 0.95f && handsUp) // i kept it like that so that we can jump as many times as we want, maybe put condition?
         {
             verticalVelocity = jumpMagnitude;
+            playPropulsionSound();
+            if (leftFire != null && rightFire != null)
+            {
+                leftFire.SetActive(true);
+                rightFire.SetActive(true);
+            }
         }
 
-    verticalVelocity += gravity * Time.deltaTime;
+        verticalVelocity += gravity * Time.deltaTime;
         transform.position += new Vector3(0, verticalVelocity * Time.deltaTime, 0); // offset
 
         // if below ground, stop at ground and stay there
@@ -90,25 +177,73 @@ public class LocomotionTechnique : MonoBehaviour
         {
             transform.position = new Vector3(transform.position.x, 0f, transform.position.z );
             verticalVelocity = 0.0f;
+            if ((leftFire!=null) && (rightFire!=null)) {
+                leftFire.SetActive(false);
+                rightFire.SetActive(false);
+            }
+            stopPropulsionSound();
         }
 
 
-     // WALK
-        // https://developers.meta.com/horizon/documentation/unity/unity-ovrinput/
         
+        // float currentLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
+        // float currentRightY = OVRInput.GetLocalControllerPosition(rightController).y;
+
+        // float leftDifference = Math.Abs(currentLeftY- prevLeftY);
+        // float rightDifference = Math.Abs(currentRightY- prevRightY);
+
+        // float effort = leftDifference + rightDifference;
+        // if (effort < 0.01f) effort = 0f;
+
+        // float newSpeed = walkingSpeed * Mathf.Clamp(effort * sensitivity, 0f, 1f);
+        // currentSpeed = Mathf.Lerp(currentSpeed, newSpeed, speedSmooth * Time.deltaTime);
+         
+        // WALK        
         // here im not using 20cm detection, we're always walking no matter the distance of the swinging  
         float currentLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
         float currentRightY = OVRInput.GetLocalControllerPosition(rightController).y;
 
-          float leftDifference = Math.Abs(currentLeftY- prevLeftY);
+        float leftDifference = Math.Abs(currentLeftY- prevLeftY);
         float rightDifference = Math.Abs(currentRightY- prevRightY);
 
+        // bool isSwinging = (leftDifference+rightDifference)> 0.01f; // here it's swinging if we slightly move the controllers
         float effort = leftDifference + rightDifference;
-        if (effort < 0.01f) effort = 0f;
 
-        float newSpeed = walkingSpeed * Mathf.Clamp(effort * sensitivity, 0f, 1f);
-        currentSpeed = Mathf.Lerp(currentSpeed, newSpeed, speedSmooth * Time.deltaTime);
 
+        // float newSpeed = 0.0f;
+        // if (isSwinging) newSpeed = walkingSpeed*effort;
+        // float sensitivity = 50f; 
+        // newSpeed = walkingSpeed * Mathf.Clamp(effort * sensitivity, 0f, 1f);
+        // playStepSound();
+
+        float stepThreshold = 0.02f;
+
+        if (effort < stepThreshold) 
+        { 
+            effort = 0f; 
+            canPlayStep = true; 
+        }
+
+
+        if(effort > 0f && canPlayStep)
+        {
+            playStepSound();  
+            canPlayStep = false;
+        }
+        
+        float sensitivity = 50f;
+        float acceleration = walkingSpeed * Mathf.Clamp(effort * sensitivity, 0f, 1f);
+
+        float friction = 0.5f; 
+        // inertia: velocity*= (1-friction * delta t) so that velocity reduces over time
+        // we then add the acceleration * delta t * direction of head 
+        // which is the current acceleration 
+        velocity = velocity * (1 - friction * Time.deltaTime) + hmd.transform.forward * acceleration * Time.deltaTime;
+
+        transform.position += velocity * Time.deltaTime;
+
+      
+        // SKATES
         // Move in planar forward direction (prevents tilt drift)
         Vector3 flatForward = Vector3.forward;
         if (hmd != null)
@@ -116,9 +251,9 @@ public class LocomotionTechnique : MonoBehaviour
             flatForward = Vector3.ProjectOnPlane(hmd.transform.forward, Vector3.up).normalized;
             if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
         }
-
-        transform.position += flatForward * currentSpeed * Time.deltaTime;
-
+        
+        // transform.position += flatForward * currentSpeed * Time.deltaTime;
+        
         prevLeftY = currentLeftY;
         prevRightY = currentRightY;
 
@@ -126,38 +261,7 @@ public class LocomotionTechnique : MonoBehaviour
         AnimateSkates(flatForward);
         
 
-        // works kinda; but weird effect when walking, very "buggy" effect ; with 20cm limit
-
-        // float currentLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
-        // float currentRightY = OVRInput.GetLocalControllerPosition(rightController).y;
-
-//         float thresholdWalkDetection = 0.2f; // make it bigger
-//         float leftDifference = Math.Abs(currentLeftY- prevLeftY);
-//         float rightDifference = Math.Abs(currentRightY- prevRightY);
-
-//         totalLeftDist +=leftDifference;
-//         totalRightDist +=rightDifference;
-//         offset = Vector3.zero;
-//         float stepScale = 4.0f; // meters per total threshold
-
-//         if (totalLeftDist > thresholdWalkDetection)
-//         {
-//             offset += hmd.transform.forward.normalized * stepScale; // 1 step?
-//             totalLeftDist =0.0f;
-//         }
-//         if (totalRightDist> thresholdWalkDetection)
-//         {
-//             offset += hmd.transform.forward.normalized * stepScale;
-
-//             totalRightDist = 0.0f;
-
-//         }
-
-//         prevLeftY = currentLeftY;
-//         prevRightY = currentRightY;
-
-//         transform.position = transform.position + offset;// * translationGain;
-
+     
 
 
         // PROF'S CODE
@@ -215,6 +319,34 @@ public class LocomotionTechnique : MonoBehaviour
             }
         }
     }
+    void playStepSound()
+    {
+        Debug.Log("MYLOG: playStepSound");
+
+        if (stepAudio != null)
+        {
+            Debug.Log("MYLOG: Step triggered!");
+
+            // stepAudio.pitch = Random.Range(0.95f, 1.05f); 
+            stepAudio.Play();
+        }
+    }
+
+    void playPropulsionSound()
+    {
+        if (propulsionAudio != null && !propulsionAudio.isPlaying)
+        {
+            propulsionAudio.Play();
+        }
+    }
+
+    void stopPropulsionSound()
+    {
+        if (propulsionAudio != null)
+        {
+            propulsionAudio.Stop();
+        }
+    }
 
     private void AnimateSkates(Vector3 flatForward)
     {
@@ -248,7 +380,10 @@ public class LocomotionTechnique : MonoBehaviour
         }
 
         // Advance gait phase
-        float speed01 = Mathf.Clamp01(currentSpeed / Mathf.Max(walkingSpeed, 0.001f));
+        float planarSpeed = Vector3.ProjectOnPlane(velocity, Vector3.up).magnitude;
+        float speed01 = Mathf.Clamp01(planarSpeed / walkingSpeed);
+
+        // float speed01 = Mathf.Clamp01(currentSpeed / Mathf.Max(walkingSpeed, 0.001f));
         float hz = Mathf.Lerp(0.8f, strideFrequency, speed01);
         skatePhase += (hz * 2f * Mathf.PI) * Time.deltaTime;
 
