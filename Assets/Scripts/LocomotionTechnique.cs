@@ -137,7 +137,7 @@ public class LocomotionTechnique : MonoBehaviour
         rightFire.SetActive(false);
 
     }
-    float walkingSpeed = 7.0f;   // to modify maybe, kinda too slow
+    float walkingSpeed = 10.0f;   // to modify maybe, kinda too slow
     float currentSpeed = 0f;      
 
     Vector3 velocity = Vector3.zero; // current movement velocity
@@ -234,7 +234,7 @@ public class LocomotionTechnique : MonoBehaviour
         float sensitivity = 50f;
         float acceleration = walkingSpeed * Mathf.Clamp(effort * sensitivity, 0f, 1f);
 
-        float friction = 0.5f; 
+        float friction = 0.65f; 
         // inertia: velocity*= (1-friction * delta t) so that velocity reduces over time
         // we then add the acceleration * delta t * direction of head 
         // which is the current acceleration 
