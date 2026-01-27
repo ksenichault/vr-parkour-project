@@ -4,17 +4,23 @@ using System;
 // using System.Diagnostics;
 
 public class LocomotionTechnique : MonoBehaviour
-{    
-    // Please implement your locomotion technique in this script. 
+{
+    // Please implement your locomotion technique in this script.
     public OVRInput.Controller leftController;
     public OVRInput.Controller rightController;
+
     [Range(0, 10)] public float translationGain = 0.5f;
+
     public GameObject hmd;
-    public float sensitivity = 50f;         // how strongly controller swing maps to speed
-    public float speedSmooth = 6f;          // Lerp smoothing
+
+    [Header("Locomotion Tuning")]
+    public float sensitivity = 80f;      // how strongly controller swing maps to speed (increased)
+    public float speedSmooth = 6f;
+    float walkingSpeed = 10.0f;
+
     [SerializeField] private float leftTriggerValue;
     [SerializeField] private float rightTriggerValue;
-    // [SerializeField] private Vector3 startPos;
+     // [SerializeField] private Vector3 startPos;
     // [SerializeField] private Vector3 offset;
     // [SerializeField] private bool isIndexTriggerDown;
 
@@ -25,10 +31,9 @@ public class LocomotionTechnique : MonoBehaviour
     public string stage;
     public SelectionTaskMeasure selectionTaskMeasure;
 
-     // added
-    private float gravity = -9.81f;        
+    // Jump physics
+    private float gravity = -9.81f;
     private float jumpMagnitude= 10.0f;          
-
     private float verticalVelocity = 0f;
 
     float prevLeftY = 0.0f;
@@ -43,59 +48,72 @@ public class LocomotionTechnique : MonoBehaviour
     public Transform leftSkate;
     public Transform rightSkate;
 
-    // Where skates rest (local offsets under the rig root where this script lives)
+    // Where skates rest (offsets from body center under HMD)
     public Vector3 leftFootLocalOffset = new Vector3(-0.12f, 0.02f, 0.05f);
     public Vector3 rightFootLocalOffset = new Vector3(0.12f, 0.02f, 0.05f);
 
     [Header("Skate Animation")]
-    public float strideLength = 0.25f;        // total front/back range in meters
-    public float strideFrequency = 1.8f;      // cycles/sec near full speed
-    public float minSpeedToAnimate = 0.05f;   // m/s
-    public float skateYawFollow = 12f;        // yaw smoothing
+    public float strideLength = 0.30f;       // total front/back range in meters
+    public float strideFrequency = 2.2f;     // max cycles/sec at full speed
+    public float minFrequency = 0.6f;        // min cycles/sec at low speed
+    public float minSpeedToAnimate = 0.05f;  // minimum velocity to start stride animation (very low)
+    public float pushStrideBoost = 0.5f;     // extra stride from arm movement alone
 
-    
+    [Header("Skate Following (Body)")]
+    public float skateFollowPos = 18f;   // how fast skates follow target position (increased)
+    public float skateFollowRot = 14f;   // how fast skates follow target rotation (increased)
+    public float toeOutAngle = 4f;       // subtle outward stance (degrees)
+
+    [Header("Skate Lean (Roll)")]
+    public float maxLeanAngle = 18f;
+    public float leanPerDegPerSec = 0.04f;
+    public float leanSmooth = 8f;
+
+    [Header("Skate Cant (Side Tilt)")]
+    public float baseCantAngle = 12f;
+    public float pushCantAngle = 10f;
+    public float leanBoost = 2.0f;
+    public float minCantWhenMoving = 0.35f;
+
+    [Header("Stride Gating")]
+    public float pushThreshold = 0.008f; // minimum effort to consider "pushing" (lowered for sensitivity)
 
     [Header("Wheel Roll (Optional)")]
-    public float wheelRadius = 0.04f;         // meters
+    public float wheelRadius = 0.04f;
     public Transform[] leftWheels;
     public Transform[] rightWheels;
 
+    // Internal stride state
     private float skatePhase = 0f;
-    private Vector3 prevRigPos;
+    private float currentStrideLeft = 0f;
+    private float currentStrideRight = 0f;
 
     private GameObject leftFire;
     private GameObject rightFire;
 
     private GameObject fireEffectPrefab;
-
     private GameObject stepAudioPrefab;
     private GameObject propulsionAudioPrefab;
 
+    Vector3 velocity = Vector3.zero;
+
+    // For roomscale-follow + wheel roll + lean
+    private Vector3 prevBodyCenter;
+    private Vector3 prevYawDir = Vector3.forward;
+    private float currentLean = 0f;
 
     void Awake()
     {
         if (fireEffectPrefab == null)
-        {
             fireEffectPrefab = Resources.Load<GameObject>("CartoonFire");
-        }
         if (stepAudioPrefab == null)
-        {
             stepAudioPrefab = Resources.Load<GameObject>("StepAudioPrefab");
-        }
 
         if (propulsionAudioPrefab == null)
-        {
             propulsionAudioPrefab = Resources.Load<GameObject>("PropulsionAudioPrefab");
-        }
 
-        if (stepAudioPrefab == null)
-        {
-            Debug.Log("MYLOG step audio prefab null");
-        }
-        if (propulsionAudioPrefab == null)
-        {
-            Debug.Log("MYLOG propulsion audio prefab null");
-        }
+        if (stepAudioPrefab == null) Debug.Log("MYLOG step audio prefab null");
+        if (propulsionAudioPrefab == null) Debug.Log("MYLOG propulsion audio prefab null");
 
         if (stepAudioPrefab != null)
         {
@@ -108,7 +126,7 @@ public class LocomotionTechnique : MonoBehaviour
             GameObject propObj = Instantiate(propulsionAudioPrefab, transform);
             propulsionAudio = propObj.GetComponent<AudioSource>();
         }
-        
+
     }
 
     void Start()
@@ -116,77 +134,73 @@ public class LocomotionTechnique : MonoBehaviour
         prevLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
         prevRightY = OVRInput.GetLocalControllerPosition(rightController).y;
 
-        prevRigPos = transform.position;
+        prevBodyCenter = GetBodyCenter();
+        prevYawDir = GetHmdYawDir();
+        if (prevYawDir.sqrMagnitude < 0.0001f) prevYawDir = Vector3.forward;
 
-        // Initialize skate positions to rest
-        if (leftSkate != null) leftSkate.localPosition = leftFootLocalOffset;
-        if (rightSkate != null) rightSkate.localPosition = rightFootLocalOffset;
+        SnapSkatesToBody(prevYawDir);
 
-        Vector3 leftFireOffset = new Vector3(-0.01f, -0.05f, 0f); 
-        Vector3 rightFireOffset = new Vector3(0.01f, -0.05f, 0f); 
+        // Fire FX (children of skates)
+        Vector3 leftFireOffset = new Vector3(-0.01f, -0.05f, 0f);
+        Vector3 rightFireOffset = new Vector3(0.01f, -0.05f, 0f);
 
-        leftFire = Instantiate(fireEffectPrefab, leftSkate );
-        
-        leftFire.transform.localPosition = leftFireOffset;
-        leftFire.transform.localRotation = Quaternion.Euler(-180f, 0f, 0f);
-        leftFire.SetActive(false);
+        if (fireEffectPrefab != null && leftSkate != null)
+        {
+            leftFire = Instantiate(fireEffectPrefab, leftSkate);
+            leftFire.transform.localPosition = leftFireOffset;
+            leftFire.transform.localRotation = Quaternion.Euler(-180f, 0f, 0f);
+            leftFire.SetActive(false);
+        }
 
-        rightFire = Instantiate(fireEffectPrefab, rightSkate);
-        rightFire.transform.localPosition = rightFireOffset;
-        rightFire.transform.localRotation = Quaternion.Euler(-180f, 0f, 0f);
-        rightFire.SetActive(false);
-
+        if (fireEffectPrefab != null && rightSkate != null)
+        {
+            rightFire = Instantiate(fireEffectPrefab, rightSkate);
+            rightFire.transform.localPosition = rightFireOffset;
+            rightFire.transform.localRotation = Quaternion.Euler(-180f, 0f, 0f);
+            rightFire.SetActive(false);
+        }
     }
-    float walkingSpeed = 10.0f;   // to modify maybe, kinda too slow
-    float currentSpeed = 0f;      
-
-    Vector3 velocity = Vector3.zero; // current movement velocity
 
     void Update()
     {
-          ////////////////////////////////////////////////////////////////////////////////////////////////////
-        // Please implement your LOCOMOTION TECHNIQUE in this script :D.
-        leftTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, leftController); 
-        rightTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, rightController); 
+        ////////////////////////////////////////////////////////////////////////////////////////////////////
+        // Inputs
+        leftTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, leftController);
+        rightTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, rightController);
 
-        // JUMP
-        // the raising arms 
-        
+        // -----------------------------------------------------------------------------------------------
+        // JUMP (both triggers + hands above head)
         Vector3 leftPos = OVRInput.GetLocalControllerPosition(leftController);
         Vector3 rightPos = OVRInput.GetLocalControllerPosition(rightController);
 
-        float headHeight = hmd.transform.position.y;
+        float headHeight = (hmd != null) ? hmd.transform.position.y : transform.position.y;
         bool handsUp = leftPos.y >= headHeight && rightPos.y >= headHeight;
 
-        if (leftTriggerValue > 0.95f && rightTriggerValue > 0.95f && handsUp) // i kept it like that so that we can jump as many times as we want, maybe put condition?
+        if (leftTriggerValue > 0.95f && rightTriggerValue > 0.95f && handsUp)
         {
             verticalVelocity = jumpMagnitude;
             playPropulsionSound();
-            if (leftFire != null && rightFire != null)
-            {
-                leftFire.SetActive(true);
-                rightFire.SetActive(true);
-            }
+            if (leftFire != null) leftFire.SetActive(true);
+            if (rightFire != null) rightFire.SetActive(true);
         }
 
         verticalVelocity += gravity * Time.deltaTime;
-        transform.position += new Vector3(0, verticalVelocity * Time.deltaTime, 0); // offset
+        transform.position += new Vector3(0, verticalVelocity * Time.deltaTime, 0);
 
-        // if below ground, stop at ground and stay there
-        if (transform.position.y<=0.0f) 
+        if (transform.position.y <= 0.0f)
         {
-            transform.position = new Vector3(transform.position.x, 0f, transform.position.z );
+            transform.position = new Vector3(transform.position.x, 0f, transform.position.z);
             verticalVelocity = 0.0f;
-            if ((leftFire!=null) && (rightFire!=null)) {
-                leftFire.SetActive(false);
-                rightFire.SetActive(false);
-            }
+
+            if (leftFire != null) leftFire.SetActive(false);
+            if (rightFire != null) rightFire.SetActive(false);
+
             stopPropulsionSound();
         }
 
 
-        
-        // float currentLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
+
+           // float currentLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
         // float currentRightY = OVRInput.GetLocalControllerPosition(rightController).y;
 
         // float leftDifference = Math.Abs(currentLeftY- prevLeftY);
@@ -203,68 +217,56 @@ public class LocomotionTechnique : MonoBehaviour
         float currentLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
         float currentRightY = OVRInput.GetLocalControllerPosition(rightController).y;
 
-        float leftDifference = Math.Abs(currentLeftY- prevLeftY);
-        float rightDifference = Math.Abs(currentRightY- prevRightY);
-
-        // bool isSwinging = (leftDifference+rightDifference)> 0.01f; // here it's swinging if we slightly move the controllers
+        float leftDifference = Math.Abs(currentLeftY - prevLeftY);
+        float rightDifference = Math.Abs(currentRightY - prevRightY);
         float effort = leftDifference + rightDifference;
 
-
-        // float newSpeed = 0.0f;
-        // if (isSwinging) newSpeed = walkingSpeed*effort;
-        // float sensitivity = 50f; 
-        // newSpeed = walkingSpeed * Mathf.Clamp(effort * sensitivity, 0f, 1f);
-        // playStepSound();
-
-        float stepThreshold = 0.02f;
-
-        if (effort < stepThreshold) 
-        { 
-            effort = 0f; 
-            canPlayStep = true; 
-        }
-
-
-        if(effort > 0f && canPlayStep)
+        // Step sound gating
+        float stepThreshold = 0.008f;
+        if (effort < stepThreshold)
         {
-            playStepSound();  
+            effort = 0f;
+            canPlayStep = true;
+        }
+        if (effort > 0f && canPlayStep)
+        {
+            playStepSound();
             canPlayStep = false;
         }
-        
-        float sensitivity = 50f;
-        float acceleration = walkingSpeed * Mathf.Clamp(effort * sensitivity, 0f, 1f);
 
-        float friction = 0.65f; 
-        // inertia: velocity*= (1-friction * delta t) so that velocity reduces over time
+        // Push gating
+        float push01 = 0f;
+        if (effort > pushThreshold)
+            push01 = Mathf.Clamp01(effort * sensitivity);
+
+        float acceleration = walkingSpeed * push01;
+
+        // Inertia + friction
+        float friction = 0.65f;
+           // inertia: velocity*= (1-friction * delta t) so that velocity reduces over time
         // we then add the acceleration * delta t * direction of head 
         // which is the current acceleration 
-        velocity = velocity * (1 - friction * Time.deltaTime) + hmd.transform.forward * acceleration * Time.deltaTime;
+        float damp = Mathf.Clamp01(1f - friction * Time.deltaTime);
+        velocity *= damp;
 
+        Vector3 flatForward = GetHmdYawDir();
+        velocity += flatForward * acceleration * Time.deltaTime;
+
+        // Apply horizontal movement
         transform.position += velocity * Time.deltaTime;
 
-      
-        // SKATES
-        // Move in planar forward direction (prevents tilt drift)
-        Vector3 flatForward = Vector3.forward;
-        if (hmd != null)
-        {
-            flatForward = Vector3.ProjectOnPlane(hmd.transform.forward, Vector3.up).normalized;
-            if (flatForward.sqrMagnitude < 0.0001f) flatForward = Vector3.forward;
-        }
-        
-        // transform.position += flatForward * currentSpeed * Time.deltaTime;
-        
         prevLeftY = currentLeftY;
         prevRightY = currentRightY;
 
-        // --- SKATE VISUALS ---
-        AnimateSkates(flatForward);
-        
-
-     
+        // -----------------------------------------------------------------------------------------------
+        // SKATE VISUALS
+        AnimateSkates(push01);
 
 
-        // PROF'S CODE
+
+
+
+       // PROF'S CODE
         // if (leftTriggerValue > 0.95f && rightTriggerValue > 0.95f)
         // {
         //     if (!isIndexTriggerDown)
@@ -308,94 +310,207 @@ public class LocomotionTechnique : MonoBehaviour
         //     }
         // }
 
-
-        ////////////////////////////////////////////////////////////////////////////////
-        // These are for the game mechanism.
         if (OVRInput.Get(OVRInput.Button.Two) || OVRInput.Get(OVRInput.Button.Four))
         {
-            if (parkourCounter.parkourStart)
-            {
+            if (parkourCounter != null && parkourCounter.parkourStart)
                 transform.position = parkourCounter.currentRespawnPos;
-            }
         }
     }
+
+    // Audio helpers
     void playStepSound()
     {
-        Debug.Log("MYLOG: playStepSound");
-
-        if (stepAudio != null)
-        {
-            Debug.Log("MYLOG: Step triggered!");
-
-            // stepAudio.pitch = Random.Range(0.95f, 1.05f); 
-            stepAudio.Play();
-        }
+        if (stepAudio != null) stepAudio.Play();
     }
 
     void playPropulsionSound()
     {
         if (propulsionAudio != null && !propulsionAudio.isPlaying)
-        {
             propulsionAudio.Play();
-        }
     }
 
     void stopPropulsionSound()
     {
         if (propulsionAudio != null)
-        {
             propulsionAudio.Stop();
-        }
     }
 
-    private void AnimateSkates(Vector3 flatForward)
+    // ==========================
+    // Skate helpers
+    // ==========================
+    private Vector3 GetHmdYawDir()
+    {
+        Vector3 dir = Vector3.forward;
+        if (hmd != null)
+        {
+            dir = Vector3.ProjectOnPlane(hmd.transform.forward, Vector3.up).normalized;
+            if (dir.sqrMagnitude < 0.0001f) dir = Vector3.forward;
+        }
+        return dir;
+    }
+
+    private Vector3 GetBodyCenter()
+    {
+        Vector3 center = transform.position;
+
+        if (hmd != null)
+        {
+            Vector3 hmdOffset = Vector3.ProjectOnPlane(hmd.transform.position - transform.position, Vector3.up);
+            center += hmdOffset;
+        }
+
+        center.y = transform.position.y;
+        return center;
+    }
+
+    private void SnapSkatesToBody(Vector3 yawDir)
     {
         if (leftSkate == null || rightSkate == null) return;
 
-        // distance traveled this frame (planar)
-        Vector3 rigDelta = transform.position - prevRigPos;
-        float planarDistance = Vector3.ProjectOnPlane(rigDelta, Vector3.up).magnitude;
-        float speedApprox = planarDistance / Mathf.Max(Time.deltaTime, 0.0001f);
-        prevRigPos = transform.position;
+        Vector3 center = GetBodyCenter();
+        Vector3 right = Vector3.Cross(Vector3.up, yawDir).normalized;
 
-        bool moving = speedApprox > minSpeedToAnimate;
+        Vector3 leftTarget =
+            center + right * leftFootLocalOffset.x + yawDir * leftFootLocalOffset.z + Vector3.up * leftFootLocalOffset.y;
 
-        // Yaw align skates to movement direction
-        if (flatForward.sqrMagnitude > 0.0001f)
-        {
-            Quaternion targetYaw = Quaternion.LookRotation(flatForward, Vector3.up);
-            leftSkate.rotation = Quaternion.Slerp(leftSkate.rotation, targetYaw, skateYawFollow * Time.deltaTime);
-            rightSkate.rotation = Quaternion.Slerp(rightSkate.rotation, targetYaw, skateYawFollow * Time.deltaTime);
-        }
+        Vector3 rightTarget =
+            center + right * rightFootLocalOffset.x + yawDir * rightFootLocalOffset.z + Vector3.up * rightFootLocalOffset.y;
 
-        Vector3 leftBase = leftFootLocalOffset;
-        Vector3 rightBase = rightFootLocalOffset;
+        leftSkate.position = leftTarget;
+        rightSkate.position = rightTarget;
 
-        // If stopped, return to rest pose smoothly
-        if (!moving)
-        {
-            leftSkate.localPosition = Vector3.Lerp(leftSkate.localPosition, leftBase, 10f * Time.deltaTime);
-            rightSkate.localPosition = Vector3.Lerp(rightSkate.localPosition, rightBase, 10f * Time.deltaTime);
-            return;
-        }
+        Quaternion yawQ = Quaternion.LookRotation(yawDir, Vector3.up);
+        Quaternion toeL = Quaternion.AngleAxis(-toeOutAngle, Vector3.up);
+        Quaternion toeR = Quaternion.AngleAxis(+toeOutAngle, Vector3.up);
 
-        // Advance gait phase
+        leftSkate.rotation = yawQ * toeL;
+        rightSkate.rotation = yawQ * toeR;
+    }
+
+    private void AnimateSkates(float push01)
+    {
+        if (leftSkate == null || rightSkate == null) return;
+
+        // --- 1) Calculate current speed ---
         float planarSpeed = Vector3.ProjectOnPlane(velocity, Vector3.up).magnitude;
-        float speed01 = Mathf.Clamp01(planarSpeed / walkingSpeed);
+        float speed01 = Mathf.Clamp01(planarSpeed / Mathf.Max(walkingSpeed, 0.001f));
 
-        // float speed01 = Mathf.Clamp01(currentSpeed / Mathf.Max(walkingSpeed, 0.001f));
-        float hz = Mathf.Lerp(0.8f, strideFrequency, speed01);
-        skatePhase += (hz * 2f * Mathf.PI) * Time.deltaTime;
+        // --- 2) Get directions ---
+        Vector3 center = GetBodyCenter();
+        Vector3 yawDir = GetHmdYawDir();
+        if (yawDir.sqrMagnitude < 0.0001f) yawDir = Vector3.forward;
+        yawDir.Normalize();
 
-        // back/forth slide on local Z
-        float halfStride = strideLength * 0.5f;
-        float slideL = Mathf.Sin(skatePhase) * halfStride;
-        float slideR = Mathf.Sin(skatePhase + Mathf.PI) * halfStride;
+        Vector3 right = Vector3.Cross(Vector3.up, yawDir).normalized;
 
-        leftSkate.localPosition = leftBase + new Vector3(0f, 0f, slideL);
-        rightSkate.localPosition = rightBase + new Vector3(0f, 0f, slideR);
+        // Movement direction for stride (use velocity if moving, else yaw)
+        Vector3 strideDir = yawDir;
+        if (velocity.sqrMagnitude > 0.01f)
+        {
+            strideDir = Vector3.ProjectOnPlane(velocity, Vector3.up).normalized;
+            if (strideDir.sqrMagnitude < 0.0001f) strideDir = yawDir;
+        }
 
-        // Wheel roll (optional)
+        // --- 3) Compute stride offsets based on VELOCITY + PUSH EFFORT ---
+        float targetStrideLeft = 0f;
+        float targetStrideRight = 0f;
+
+        // Combined activity: respond to EITHER velocity OR arm movement
+        float activity = Mathf.Max(speed01, push01 * pushStrideBoost);
+        
+        if (planarSpeed > minSpeedToAnimate || push01 > 0.01f)
+        {
+            // Frequency scales with activity (arm movement OR speed)
+            float hz = Mathf.Lerp(minFrequency, strideFrequency, activity);
+            
+            // Advance phase based on frequency
+            skatePhase += hz * Mathf.PI * 2f * Time.deltaTime;
+            
+            // Keep phase in reasonable range to avoid float issues over time
+            if (skatePhase > Mathf.PI * 100f)
+                skatePhase -= Mathf.PI * 100f;
+
+            // Amplitude scales with activity (immediate response to arm movement + velocity)
+            // Use max of speed-based and push-based amplitude for responsiveness
+            float speedAmplitude = strideLength * 0.5f * speed01;
+            float pushAmplitude = strideLength * 0.5f * push01 * pushStrideBoost;
+            float amplitude = Mathf.Max(speedAmplitude, pushAmplitude);
+            
+            // Ensure minimum visible amplitude when there's any activity
+            if (activity > 0.01f)
+                amplitude = Mathf.Max(amplitude, strideLength * 0.15f * activity);
+
+            // Alternating sinusoidal motion (inverse phase: PI apart)
+            targetStrideLeft = Mathf.Sin(skatePhase) * amplitude;
+            targetStrideRight = Mathf.Sin(skatePhase + Mathf.PI) * amplitude;
+        }
+        else
+        {
+            // Decay phase smoothly when stopped
+            skatePhase = Mathf.Lerp(skatePhase, 0f, 3f * Time.deltaTime);
+        }
+
+        // Smooth the stride values (faster smoothing for more responsiveness)
+        float strideSmooth = 12f;
+        currentStrideLeft = Mathf.Lerp(currentStrideLeft, targetStrideLeft, strideSmooth * Time.deltaTime);
+        currentStrideRight = Mathf.Lerp(currentStrideRight, targetStrideRight, strideSmooth * Time.deltaTime);
+
+        // --- 4) Calculate target positions (base + stride) ---
+        Vector3 leftBase = center 
+            + right * leftFootLocalOffset.x 
+            + yawDir * leftFootLocalOffset.z 
+            + Vector3.up * leftFootLocalOffset.y;
+
+        Vector3 rightBase = center 
+            + right * rightFootLocalOffset.x 
+            + yawDir * rightFootLocalOffset.z 
+            + Vector3.up * rightFootLocalOffset.y;
+
+        // Add stride offset along movement direction
+        Vector3 leftTarget = leftBase + strideDir * currentStrideLeft;
+        Vector3 rightTarget = rightBase + strideDir * currentStrideRight;
+
+        // --- 5) Smooth position interpolation ---
+        leftSkate.position = Vector3.Lerp(leftSkate.position, leftTarget, skateFollowPos * Time.deltaTime);
+        rightSkate.position = Vector3.Lerp(rightSkate.position, rightTarget, skateFollowPos * Time.deltaTime);
+
+        // --- 6) Activity factor for cant ---
+        float activity01 = Mathf.Max(push01, speed01);
+        float cantFactor = (activity01 > 0.01f)
+            ? Mathf.Lerp(0f, 1f, Mathf.Max(minCantWhenMoving, activity01))
+            : 0f;
+
+        // --- 7) Turning lean ---
+        float signedTurn = Vector3.SignedAngle(prevYawDir, yawDir, Vector3.up);
+        float turnRate = signedTurn / Mathf.Max(Time.deltaTime, 0.0001f);
+
+        float targetLean = Mathf.Clamp(-turnRate * leanPerDegPerSec, -maxLeanAngle, maxLeanAngle) * speed01;
+        currentLean = Mathf.Lerp(currentLean, targetLean, leanSmooth * Time.deltaTime);
+        prevYawDir = yawDir;
+
+        // --- 8) Build final rotations ---
+        Quaternion yawQ = Quaternion.LookRotation(yawDir, Vector3.up);
+
+        Quaternion toeL = Quaternion.AngleAxis(-toeOutAngle, Vector3.up);
+        Quaternion toeR = Quaternion.AngleAxis(+toeOutAngle, Vector3.up);
+
+        float turningLean = currentLean * leanBoost;
+        float cant = (baseCantAngle + pushCantAngle * push01) * cantFactor;
+
+        Quaternion rollLeft = Quaternion.AngleAxis(-cant + turningLean, Vector3.forward);
+        Quaternion rollRight = Quaternion.AngleAxis(+cant + turningLean, Vector3.forward);
+
+        Quaternion leftRotTarget = yawQ * toeL * rollLeft;
+        Quaternion rightRotTarget = yawQ * toeR * rollRight;
+
+        leftSkate.rotation = Quaternion.Slerp(leftSkate.rotation, leftRotTarget, skateFollowRot * Time.deltaTime);
+        rightSkate.rotation = Quaternion.Slerp(rightSkate.rotation, rightRotTarget, skateFollowRot * Time.deltaTime);
+
+        // --- 9) Wheel roll ---
+        Vector3 delta = center - prevBodyCenter;
+        float planarDistance = Vector3.ProjectOnPlane(delta, Vector3.up).magnitude;
+        prevBodyCenter = center;
+
         RollWheels(leftWheels, planarDistance);
         RollWheels(rightWheels, planarDistance);
     }
@@ -409,7 +524,6 @@ public class LocomotionTechnique : MonoBehaviour
         for (int i = 0; i < wheels.Length; i++)
         {
             if (wheels[i] == null) continue;
-            // Adjust axis if your wheel’s roll axis is different
             wheels[i].Rotate(Vector3.right, degrees, Space.Self);
         }
     }
@@ -442,6 +556,6 @@ public class LocomotionTechnique : MonoBehaviour
             GetComponent<AudioSource>().Play();
             other.gameObject.SetActive(false);
         }
-        // These are for the game mechanism.
+                // These are for the game mechanism.
     }
 }
