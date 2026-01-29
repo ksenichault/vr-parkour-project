@@ -12,7 +12,14 @@ public class LocomotionTechnique : MonoBehaviour
     [Range(0, 10)] public float translationGain = 0.5f;
 
     public GameObject hmd;
+    [Header("Ground Detection")]
+    public float groundCheckDistance = 5.0f;
+    public float groundOffset = 0.02f;
+    public LayerMask groundLayers;
+    
 
+    private bool isGrounded = false;
+    private float groundY = 0f;
     [Header("Locomotion Tuning")]
     public float sensitivity = 80f;      // how strongly controller swing maps to speed (increased)
     public float speedSmooth = 6f;
@@ -184,19 +191,46 @@ public class LocomotionTechnique : MonoBehaviour
             if (rightFire != null) rightFire.SetActive(true);
         }
 
-        verticalVelocity += gravity * Time.deltaTime;
-        transform.position += new Vector3(0, verticalVelocity * Time.deltaTime, 0);
+     // --- GROUND DETECTION ---
+Vector3 rayOrigin = transform.position + Vector3.up * 0.5f;  // Start higher
+RaycastHit hit;
 
-        if (transform.position.y <= 0.0f)
+// Use SphereCast for reliability
+if (Physics.SphereCast(rayOrigin, 0.2f, Vector3.down, out hit, groundCheckDistance, groundLayers))
+{
+    groundY = hit.point.y;
+    isGrounded = transform.position.y <= groundY + groundOffset + 0.05f;
+}
+else
+{
+    // Fallback: try without layer mask (detects everything)
+    if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance))
+    {
+        groundY = hit.point.y;
+        isGrounded = transform.position.y <= groundY + groundOffset + 0.05f;
+    }
+    else
+    {
+        isGrounded = false;
+    }
+}
+
+        // --- GRAVITY AND LANDING ---
+        if (!isGrounded)
         {
-            transform.position = new Vector3(transform.position.x, 0f, transform.position.z);
-            verticalVelocity = 0.0f;
+            verticalVelocity += gravity * Time.deltaTime;
+        }
+        else if (verticalVelocity <= 0f)
+        {
+            verticalVelocity = 0f;
+            transform.position = new Vector3(transform.position.x, groundY + groundOffset, transform.position.z);
 
             if (leftFire != null) leftFire.SetActive(false);
             if (rightFire != null) rightFire.SetActive(false);
-
             stopPropulsionSound();
         }
+
+        transform.position += new Vector3(0, verticalVelocity * Time.deltaTime, 0);
 
 
 
@@ -363,158 +397,168 @@ public class LocomotionTechnique : MonoBehaviour
         return center;
     }
 
-    private void SnapSkatesToBody(Vector3 yawDir)
+ private void SnapSkatesToBody(Vector3 yawDir)
+{
+    if (leftSkate == null || rightSkate == null) return;
+
+    Vector3 center = GetBodyCenter();
+    Vector3 right = Vector3.Cross(Vector3.up, yawDir).normalized;
+
+    Vector3 leftTargetXZ = center + right * leftFootLocalOffset.x + yawDir * leftFootLocalOffset.z;
+    Vector3 rightTargetXZ = center + right * rightFootLocalOffset.x + yawDir * rightFootLocalOffset.z;
+
+    // Raycast for actual ground height
+    float leftGroundY = GetGroundHeightAt(leftTargetXZ);
+    float rightGroundY = GetGroundHeightAt(rightTargetXZ);
+
+    leftSkate.position = new Vector3(leftTargetXZ.x, leftGroundY + leftFootLocalOffset.y, leftTargetXZ.z);
+    rightSkate.position = new Vector3(rightTargetXZ.x, rightGroundY + rightFootLocalOffset.y, rightTargetXZ.z);
+
+    Quaternion yawQ = Quaternion.LookRotation(yawDir, Vector3.up);
+    Quaternion toeL = Quaternion.AngleAxis(-toeOutAngle, Vector3.up);
+    Quaternion toeR = Quaternion.AngleAxis(+toeOutAngle, Vector3.up);
+
+    leftSkate.rotation = yawQ * toeL;
+    rightSkate.rotation = yawQ * toeR;
+}
+
+  private void AnimateSkates(float push01)
+{
+    if (leftSkate == null || rightSkate == null) return;
+
+    // --- 1) Calculate current speed ---
+    float planarSpeed = Vector3.ProjectOnPlane(velocity, Vector3.up).magnitude;
+    float speed01 = Mathf.Clamp01(planarSpeed / Mathf.Max(walkingSpeed, 0.001f));
+
+    // --- 2) Get directions ---
+    Vector3 center = GetBodyCenter();
+    Vector3 yawDir = GetHmdYawDir();
+    if (yawDir.sqrMagnitude < 0.0001f) yawDir = Vector3.forward;
+    yawDir.Normalize();
+
+    Vector3 right = Vector3.Cross(Vector3.up, yawDir).normalized;
+
+    // Movement direction for stride (use velocity if moving, else yaw)
+    Vector3 strideDir = yawDir;
+    if (velocity.sqrMagnitude > 0.01f)
     {
-        if (leftSkate == null || rightSkate == null) return;
-
-        Vector3 center = GetBodyCenter();
-        Vector3 right = Vector3.Cross(Vector3.up, yawDir).normalized;
-
-        Vector3 leftTarget =
-            center + right * leftFootLocalOffset.x + yawDir * leftFootLocalOffset.z + Vector3.up * leftFootLocalOffset.y;
-
-        Vector3 rightTarget =
-            center + right * rightFootLocalOffset.x + yawDir * rightFootLocalOffset.z + Vector3.up * rightFootLocalOffset.y;
-
-        leftSkate.position = leftTarget;
-        rightSkate.position = rightTarget;
-
-        Quaternion yawQ = Quaternion.LookRotation(yawDir, Vector3.up);
-        Quaternion toeL = Quaternion.AngleAxis(-toeOutAngle, Vector3.up);
-        Quaternion toeR = Quaternion.AngleAxis(+toeOutAngle, Vector3.up);
-
-        leftSkate.rotation = yawQ * toeL;
-        rightSkate.rotation = yawQ * toeR;
+        strideDir = Vector3.ProjectOnPlane(velocity, Vector3.up).normalized;
+        if (strideDir.sqrMagnitude < 0.0001f) strideDir = yawDir;
     }
 
-    private void AnimateSkates(float push01)
+    // --- 3) Compute stride offsets based on VELOCITY + PUSH EFFORT ---
+    float targetStrideLeft = 0f;
+    float targetStrideRight = 0f;
+
+    float activity = Mathf.Max(speed01, push01 * pushStrideBoost);
+    
+    if (planarSpeed > minSpeedToAnimate || push01 > 0.01f)
     {
-        if (leftSkate == null || rightSkate == null) return;
-
-        // --- 1) Calculate current speed ---
-        float planarSpeed = Vector3.ProjectOnPlane(velocity, Vector3.up).magnitude;
-        float speed01 = Mathf.Clamp01(planarSpeed / Mathf.Max(walkingSpeed, 0.001f));
-
-        // --- 2) Get directions ---
-        Vector3 center = GetBodyCenter();
-        Vector3 yawDir = GetHmdYawDir();
-        if (yawDir.sqrMagnitude < 0.0001f) yawDir = Vector3.forward;
-        yawDir.Normalize();
-
-        Vector3 right = Vector3.Cross(Vector3.up, yawDir).normalized;
-
-        // Movement direction for stride (use velocity if moving, else yaw)
-        Vector3 strideDir = yawDir;
-        if (velocity.sqrMagnitude > 0.01f)
-        {
-            strideDir = Vector3.ProjectOnPlane(velocity, Vector3.up).normalized;
-            if (strideDir.sqrMagnitude < 0.0001f) strideDir = yawDir;
-        }
-
-        // --- 3) Compute stride offsets based on VELOCITY + PUSH EFFORT ---
-        float targetStrideLeft = 0f;
-        float targetStrideRight = 0f;
-
-        // Combined activity: respond to EITHER velocity OR arm movement
-        float activity = Mathf.Max(speed01, push01 * pushStrideBoost);
+        float hz = Mathf.Lerp(minFrequency, strideFrequency, activity);
+        skatePhase += hz * Mathf.PI * 2f * Time.deltaTime;
         
-        if (planarSpeed > minSpeedToAnimate || push01 > 0.01f)
-        {
-            // Frequency scales with activity (arm movement OR speed)
-            float hz = Mathf.Lerp(minFrequency, strideFrequency, activity);
-            
-            // Advance phase based on frequency
-            skatePhase += hz * Mathf.PI * 2f * Time.deltaTime;
-            
-            // Keep phase in reasonable range to avoid float issues over time
-            if (skatePhase > Mathf.PI * 100f)
-                skatePhase -= Mathf.PI * 100f;
+        if (skatePhase > Mathf.PI * 100f)
+            skatePhase -= Mathf.PI * 100f;
 
-            // Amplitude scales with activity (immediate response to arm movement + velocity)
-            // Use max of speed-based and push-based amplitude for responsiveness
-            float speedAmplitude = strideLength * 0.5f * speed01;
-            float pushAmplitude = strideLength * 0.5f * push01 * pushStrideBoost;
-            float amplitude = Mathf.Max(speedAmplitude, pushAmplitude);
-            
-            // Ensure minimum visible amplitude when there's any activity
-            if (activity > 0.01f)
-                amplitude = Mathf.Max(amplitude, strideLength * 0.15f * activity);
+        float speedAmplitude = strideLength * 0.5f * speed01;
+        float pushAmplitude = strideLength * 0.5f * push01 * pushStrideBoost;
+        float amplitude = Mathf.Max(speedAmplitude, pushAmplitude);
+        
+        if (activity > 0.01f)
+            amplitude = Mathf.Max(amplitude, strideLength * 0.15f * activity);
 
-            // Alternating sinusoidal motion (inverse phase: PI apart)
-            targetStrideLeft = Mathf.Sin(skatePhase) * amplitude;
-            targetStrideRight = Mathf.Sin(skatePhase + Mathf.PI) * amplitude;
-        }
-        else
-        {
-            // Decay phase smoothly when stopped
-            skatePhase = Mathf.Lerp(skatePhase, 0f, 3f * Time.deltaTime);
-        }
-
-        // Smooth the stride values (faster smoothing for more responsiveness)
-        float strideSmooth = 12f;
-        currentStrideLeft = Mathf.Lerp(currentStrideLeft, targetStrideLeft, strideSmooth * Time.deltaTime);
-        currentStrideRight = Mathf.Lerp(currentStrideRight, targetStrideRight, strideSmooth * Time.deltaTime);
-
-        // --- 4) Calculate target positions (base + stride) ---
-        Vector3 leftBase = center 
-            + right * leftFootLocalOffset.x 
-            + yawDir * leftFootLocalOffset.z 
-            + Vector3.up * leftFootLocalOffset.y;
-
-        Vector3 rightBase = center 
-            + right * rightFootLocalOffset.x 
-            + yawDir * rightFootLocalOffset.z 
-            + Vector3.up * rightFootLocalOffset.y;
-
-        // Add stride offset along movement direction
-        Vector3 leftTarget = leftBase + strideDir * currentStrideLeft;
-        Vector3 rightTarget = rightBase + strideDir * currentStrideRight;
-
-        // --- 5) Smooth position interpolation ---
-        leftSkate.position = Vector3.Lerp(leftSkate.position, leftTarget, skateFollowPos * Time.deltaTime);
-        rightSkate.position = Vector3.Lerp(rightSkate.position, rightTarget, skateFollowPos * Time.deltaTime);
-
-        // --- 6) Activity factor for cant ---
-        float activity01 = Mathf.Max(push01, speed01);
-        float cantFactor = (activity01 > 0.01f)
-            ? Mathf.Lerp(0f, 1f, Mathf.Max(minCantWhenMoving, activity01))
-            : 0f;
-
-        // --- 7) Turning lean ---
-        float signedTurn = Vector3.SignedAngle(prevYawDir, yawDir, Vector3.up);
-        float turnRate = signedTurn / Mathf.Max(Time.deltaTime, 0.0001f);
-
-        float targetLean = Mathf.Clamp(-turnRate * leanPerDegPerSec, -maxLeanAngle, maxLeanAngle) * speed01;
-        currentLean = Mathf.Lerp(currentLean, targetLean, leanSmooth * Time.deltaTime);
-        prevYawDir = yawDir;
-
-        // --- 8) Build final rotations ---
-        Quaternion yawQ = Quaternion.LookRotation(yawDir, Vector3.up);
-
-        Quaternion toeL = Quaternion.AngleAxis(-toeOutAngle, Vector3.up);
-        Quaternion toeR = Quaternion.AngleAxis(+toeOutAngle, Vector3.up);
-
-        float turningLean = currentLean * leanBoost;
-        float cant = (baseCantAngle + pushCantAngle * push01) * cantFactor;
-
-        Quaternion rollLeft = Quaternion.AngleAxis(-cant + turningLean, Vector3.forward);
-        Quaternion rollRight = Quaternion.AngleAxis(+cant + turningLean, Vector3.forward);
-
-        Quaternion leftRotTarget = yawQ * toeL * rollLeft;
-        Quaternion rightRotTarget = yawQ * toeR * rollRight;
-
-        leftSkate.rotation = Quaternion.Slerp(leftSkate.rotation, leftRotTarget, skateFollowRot * Time.deltaTime);
-        rightSkate.rotation = Quaternion.Slerp(rightSkate.rotation, rightRotTarget, skateFollowRot * Time.deltaTime);
-
-        // --- 9) Wheel roll ---
-        Vector3 delta = center - prevBodyCenter;
-        float planarDistance = Vector3.ProjectOnPlane(delta, Vector3.up).magnitude;
-        prevBodyCenter = center;
-
-        RollWheels(leftWheels, planarDistance);
-        RollWheels(rightWheels, planarDistance);
+        targetStrideLeft = Mathf.Sin(skatePhase) * amplitude;
+        targetStrideRight = Mathf.Sin(skatePhase + Mathf.PI) * amplitude;
+    }
+    else
+    {
+        skatePhase = Mathf.Lerp(skatePhase, 0f, 3f * Time.deltaTime);
     }
 
+    float strideSmooth = 12f;
+    currentStrideLeft = Mathf.Lerp(currentStrideLeft, targetStrideLeft, strideSmooth * Time.deltaTime);
+    currentStrideRight = Mathf.Lerp(currentStrideRight, targetStrideRight, strideSmooth * Time.deltaTime);
+
+    // --- 4) Calculate BASE positions (without Y - we'll raycast for that) ---
+    Vector3 leftBaseXZ = center 
+        + right * leftFootLocalOffset.x 
+        + yawDir * leftFootLocalOffset.z;
+
+    Vector3 rightBaseXZ = center 
+        + right * rightFootLocalOffset.x 
+        + yawDir * rightFootLocalOffset.z;
+
+    // Add stride offset along movement direction
+    Vector3 leftTargetXZ = leftBaseXZ + strideDir * currentStrideLeft;
+    Vector3 rightTargetXZ = rightBaseXZ + strideDir * currentStrideRight;
+
+    // --- 5) RAYCAST to find actual ground height for each skate ---
+    float leftGroundY = GetGroundHeightAt(leftTargetXZ);
+    float rightGroundY = GetGroundHeightAt(rightTargetXZ);
+
+    // Position skates ON TOP of the detected ground
+    Vector3 leftTarget = new Vector3(leftTargetXZ.x, leftGroundY + leftFootLocalOffset.y, leftTargetXZ.z);
+    Vector3 rightTarget = new Vector3(rightTargetXZ.x, rightGroundY + rightFootLocalOffset.y, rightTargetXZ.z);
+
+    // --- 6) Smooth position interpolation ---
+    leftSkate.position = Vector3.Lerp(leftSkate.position, leftTarget, skateFollowPos * Time.deltaTime);
+    rightSkate.position = Vector3.Lerp(rightSkate.position, rightTarget, skateFollowPos * Time.deltaTime);
+
+    // --- 7) Activity factor for cant ---
+    float activity01 = Mathf.Max(push01, speed01);
+    float cantFactor = (activity01 > 0.01f)
+        ? Mathf.Lerp(0f, 1f, Mathf.Max(minCantWhenMoving, activity01))
+        : 0f;
+
+    // --- 8) Turning lean ---
+    float signedTurn = Vector3.SignedAngle(prevYawDir, yawDir, Vector3.up);
+    float turnRate = signedTurn / Mathf.Max(Time.deltaTime, 0.0001f);
+
+    float targetLean = Mathf.Clamp(-turnRate * leanPerDegPerSec, -maxLeanAngle, maxLeanAngle) * speed01;
+    currentLean = Mathf.Lerp(currentLean, targetLean, leanSmooth * Time.deltaTime);
+    prevYawDir = yawDir;
+
+    // --- 9) Build final rotations ---
+    Quaternion yawQ = Quaternion.LookRotation(yawDir, Vector3.up);
+
+    Quaternion toeL = Quaternion.AngleAxis(-toeOutAngle, Vector3.up);
+    Quaternion toeR = Quaternion.AngleAxis(+toeOutAngle, Vector3.up);
+
+    float turningLean = currentLean * leanBoost;
+    float cant = (baseCantAngle + pushCantAngle * push01) * cantFactor;
+
+    Quaternion rollLeft = Quaternion.AngleAxis(-cant + turningLean, Vector3.forward);
+    Quaternion rollRight = Quaternion.AngleAxis(+cant + turningLean, Vector3.forward);
+
+    Quaternion leftRotTarget = yawQ * toeL * rollLeft;
+    Quaternion rightRotTarget = yawQ * toeR * rollRight;
+
+    leftSkate.rotation = Quaternion.Slerp(leftSkate.rotation, leftRotTarget, skateFollowRot * Time.deltaTime);
+    rightSkate.rotation = Quaternion.Slerp(rightSkate.rotation, rightRotTarget, skateFollowRot * Time.deltaTime);
+
+    // --- 10) Wheel roll ---
+    Vector3 delta = center - prevBodyCenter;
+    float planarDistance = Vector3.ProjectOnPlane(delta, Vector3.up).magnitude;
+    prevBodyCenter = center;
+
+    RollWheels(leftWheels, planarDistance);
+    RollWheels(rightWheels, planarDistance);
+}
+
+// NEW HELPER METHOD - Add this to your class
+private float GetGroundHeightAt(Vector3 position)
+{
+    Vector3 rayOrigin = new Vector3(position.x, transform.position.y + 1f, position.z);
+    RaycastHit hit;
+    
+    if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance + 2f, groundLayers))
+    {
+        return hit.point.y;
+    }
+    
+    // Fallback to current ground level if raycast misses
+    return groundY;
+}
     private void RollWheels(Transform[] wheels, float distance)
     {
         if (wheels == null || wheels.Length == 0) return;
