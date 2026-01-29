@@ -56,8 +56,8 @@ public class LocomotionTechnique : MonoBehaviour
     public Transform rightSkate;
 
     // Where skates rest (offsets from body center under HMD)
-    public Vector3 leftFootLocalOffset = new Vector3(-0.12f, 0.02f, 0.05f);
-    public Vector3 rightFootLocalOffset = new Vector3(0.12f, 0.02f, 0.05f);
+    public Vector3 leftFootLocalOffset = new Vector3(-0.12f, 0.03f, 0.05f);
+    public Vector3 rightFootLocalOffset = new Vector3(0.12f, 0.03f, 0.05f);
 
     [Header("Skate Animation")]
     public float strideLength = 0.30f;       // total front/back range in meters
@@ -138,14 +138,27 @@ public class LocomotionTechnique : MonoBehaviour
 
     void Start()
     {
-        prevLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
-        prevRightY = OVRInput.GetLocalControllerPosition(rightController).y;
+        
+    prevLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
+    prevRightY = OVRInput.GetLocalControllerPosition(rightController).y;
 
-        prevBodyCenter = GetBodyCenter();
-        prevYawDir = GetHmdYawDir();
-        if (prevYawDir.sqrMagnitude < 0.0001f) prevYawDir = Vector3.forward;
+    // Initialize ground detection FIRST
+    Vector3 rayOrigin = transform.position + Vector3.up * 0.5f;
+    RaycastHit hit;
+    if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance))
+    {
+        groundY = hit.point.y;
+    }
+    else
+    {
+        groundY = transform.position.y;
+    }
 
-        SnapSkatesToBody(prevYawDir);
+    prevBodyCenter = GetBodyCenter();
+    prevYawDir = GetHmdYawDir();
+    if (prevYawDir.sqrMagnitude < 0.0001f) prevYawDir = Vector3.forward;
+
+    SnapSkatesToBody(prevYawDir);
 
         // Fire FX (children of skates)
         Vector3 leftFireOffset = new Vector3(-0.01f, -0.05f, 0f);
@@ -497,8 +510,20 @@ else
     float rightGroundY = GetGroundHeightAt(rightTargetXZ);
 
     // Position skates ON TOP of the detected ground
-    Vector3 leftTarget = new Vector3(leftTargetXZ.x, leftGroundY + leftFootLocalOffset.y, leftTargetXZ.z);
-    Vector3 rightTarget = new Vector3(rightTargetXZ.x, rightGroundY + rightFootLocalOffset.y, rightTargetXZ.z);
+float debugLift = 0.2f; // 50 cm ABOVE ground (very obvious)
+
+Vector3 leftTarget = new Vector3(
+    leftTargetXZ.x,
+    leftGroundY + debugLift,
+    leftTargetXZ.z
+);
+
+Vector3 rightTarget = new Vector3(
+    rightTargetXZ.x,
+    rightGroundY + debugLift,
+    rightTargetXZ.z
+);
+
 
     // --- 6) Smooth position interpolation ---
     leftSkate.position = Vector3.Lerp(leftSkate.position, leftTarget, skateFollowPos * Time.deltaTime);
@@ -548,16 +573,23 @@ else
 // NEW HELPER METHOD - Add this to your class
 private float GetGroundHeightAt(Vector3 position)
 {
-    Vector3 rayOrigin = new Vector3(position.x, transform.position.y + 1f, position.z);
+    Vector3 rayOrigin = new Vector3(position.x, transform.position.y + 2f, position.z);
     RaycastHit hit;
     
-    if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance + 2f, groundLayers))
+    // Try with ground layers first
+    if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance + 3f, groundLayers))
     {
         return hit.point.y;
     }
     
-    // Fallback to current ground level if raycast misses
-    return groundY;
+    // Fallback: raycast without layer mask (hits everything)
+    if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance + 3f))
+    {
+        return hit.point.y;
+    }
+    
+    // Last fallback
+    return transform.position.y;
 }
     private void RollWheels(Transform[] wheels, float distance)
     {
