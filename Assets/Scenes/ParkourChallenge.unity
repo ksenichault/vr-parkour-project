@@ -4194,7 +4194,7 @@ PrefabInstance:
     - target: {fileID: 3942613375915263889, guid: 6b3c85587dc0a514bbf5da8ff3106582,
         type: 3}
       propertyPath: m_LocalPosition.y
-      value: 11.48
+      value: 11.16
       objectReference: {fileID: 0}
     - target: {fileID: 3942613375915263889, guid: 6b3c85587dc0a514bbf5da8ff3106582,
         type: 3}
@@ -47660,6 +47660,7 @@ MonoBehaviour:
   parkourCounter: {fileID: 1487194127}
   stage: 
   selectionTaskMeasure: {fileID: 1487194128}
+  jumpMagnitude: 13
   leftSkate: {fileID: 1694452714}
   rightSkate: {fileID: 1470578445}
   leftFootLocalOffset: {x: -0.12, y: 0.02, z: 0.05}
@@ -65608,6 +65609,7 @@ MonoBehaviour:
   parkourCounter: {fileID: 1487194127}
   stage: 
   selectionTaskMeasure: {fileID: 1487194128}
+  jumpMagnitude: 10
   leftSkate: {fileID: 1694452714}
   rightSkate: {fileID: 1470578445}
   leftFootLocalOffset: {x: -0.12, y: 0.02, z: 0.05}

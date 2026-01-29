@@ -39,9 +39,11 @@ public class LocomotionTechnique : MonoBehaviour
     public SelectionTaskMeasure selectionTaskMeasure;
 
     // Jump physics
-    private float gravity = -9.81f;
-    private float jumpMagnitude= 10.0f;          
+   private float gravity = -9.81f;
+    [Header("Jump Settings")]
+    public float jumpMagnitude = 13f;  
     private float verticalVelocity = 0f;
+    private bool wasGrounded = true;  // Track previous grounded state
 
     float prevLeftY = 0.0f;
     float prevRightY = 0.0f;
@@ -185,48 +187,55 @@ public class LocomotionTechnique : MonoBehaviour
     {
         ////////////////////////////////////////////////////////////////////////////////////////////////////
         // Inputs
-        leftTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, leftController);
-        rightTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryIndexTrigger, rightController);
+    leftTriggerValue  = OVRInput.Get(OVRInput.Axis1D.PrimaryHandTrigger, leftController);
+    rightTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryHandTrigger, rightController);
 
-        // -----------------------------------------------------------------------------------------------
-        // JUMP (both triggers + hands above head)
-        Vector3 leftPos = OVRInput.GetLocalControllerPosition(leftController);
-        Vector3 rightPos = OVRInput.GetLocalControllerPosition(rightController);
-
-        float headHeight = (hmd != null) ? hmd.transform.position.y : transform.position.y;
-        bool handsUp = leftPos.y >= headHeight && rightPos.y >= headHeight;
-
-        if (leftTriggerValue > 0.95f && rightTriggerValue > 0.95f && handsUp)
-        {
-            verticalVelocity = jumpMagnitude;
-            playPropulsionSound();
-            if (leftFire != null) leftFire.SetActive(true);
-            if (rightFire != null) rightFire.SetActive(true);
-        }
-
-     // --- GROUND DETECTION ---
-Vector3 rayOrigin = transform.position + Vector3.up * 0.5f;  // Start higher
-RaycastHit hit;
-
-// Use SphereCast for reliability
-if (Physics.SphereCast(rayOrigin, 0.2f, Vector3.down, out hit, groundCheckDistance, groundLayers))
-{
-    groundY = hit.point.y;
-    isGrounded = transform.position.y <= groundY + groundOffset + 0.05f;
-}
-else
-{
-    // Fallback: try without layer mask (detects everything)
-    if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance))
+     
+      // --- GROUND DETECTION ---
+    Vector3 rayOrigin = transform.position + Vector3.up * 0.5f;
+    RaycastHit hit;
+    if (Physics.SphereCast(rayOrigin, 0.2f, Vector3.down, out hit, groundCheckDistance, groundLayers))
     {
         groundY = hit.point.y;
         isGrounded = transform.position.y <= groundY + groundOffset + 0.05f;
     }
     else
     {
-        isGrounded = false;
+        if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance))
+        {
+            groundY = hit.point.y;
+            isGrounded = transform.position.y <= groundY + groundOffset + 0.05f;
+        }
+        else
+        {
+            isGrounded = false;
+        }
     }
-}
+        // -----------------------------------------------------------------------------------------------
+        // JUMP (both triggers + hands above head)
+        Vector3 leftPos = OVRInput.GetLocalControllerPosition(leftController);
+        Vector3 rightPos = OVRInput.GetLocalControllerPosition(rightController);
+
+        // Use LOCAL head height (same space as GetLocalControllerPosition)
+        float headLocalY = (hmd != null) ? hmd.transform.localPosition.y : 0f;
+
+        bool handsUp = leftPos.y >= headLocalY && rightPos.y >= headLocalY;
+
+
+    bool canJump = isGrounded && verticalVelocity <= 0.1f;
+
+    Debug.Log($"JUMP grounded={isGrounded} vv={verticalVelocity:F2} handsUp={handsUp} LT={leftTriggerValue:F2} RT={rightTriggerValue:F2}");
+
+if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
+    {
+        verticalVelocity = jumpMagnitude;
+        isGrounded = false;  // Immediately set to not grounded
+        playPropulsionSound();
+        if (leftFire != null) leftFire.SetActive(true);
+        if (rightFire != null) rightFire.SetActive(true);
+    }
+
+    
 
         // --- GRAVITY AND LANDING ---
         if (!isGrounded)
@@ -238,10 +247,16 @@ else
             verticalVelocity = 0f;
             transform.position = new Vector3(transform.position.x, groundY + groundOffset, transform.position.z);
 
-            if (leftFire != null) leftFire.SetActive(false);
-            if (rightFire != null) rightFire.SetActive(false);
-            stopPropulsionSound();
+            // Only turn off fire on actual landing (transition from air to ground)
+            if (!wasGrounded)
+            {
+                if (leftFire != null) leftFire.SetActive(false);
+                if (rightFire != null) rightFire.SetActive(false);
+                stopPropulsionSound();
+            }
         }
+
+        wasGrounded = isGrounded;  // Track for next frame
 
         transform.position += new Vector3(0, verticalVelocity * Time.deltaTime, 0);
 
