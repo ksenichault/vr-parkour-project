@@ -1,7 +1,6 @@
 ﻿using UnityEngine;
 using System;
-// using System.Diagnostics;
-// using System.Diagnostics;
+
 
 public class LocomotionTechnique : MonoBehaviour
 {
@@ -21,18 +20,15 @@ public class LocomotionTechnique : MonoBehaviour
     private bool isGrounded = false;
     private float groundY = 0f;
     [Header("Locomotion Tuning")]
-    public float sensitivity = 80f;      // how strongly controller swing maps to speed (increased)
+    public float sensitivity = 80f;     
     public float speedSmooth = 6f;
     float walkingSpeed = 10.0f;
 
     [SerializeField] private float leftTriggerValue;
     [SerializeField] private float rightTriggerValue;
-     // [SerializeField] private Vector3 startPos;
-    // [SerializeField] private Vector3 offset;
-    // [SerializeField] private bool isIndexTriggerDown;
 
 
-    /////////////////////////////////////////////////////////
+
     // These are for the game mechanism.
     public ParkourCounter parkourCounter;
     public string stage;
@@ -43,7 +39,7 @@ public class LocomotionTechnique : MonoBehaviour
     [Header("Jump Settings")]
     public float jumpMagnitude = 13f;  
     private float verticalVelocity = 0f;
-    private bool wasGrounded = true;  // Track previous grounded state
+    private bool wasGrounded = true;  
 
     float prevLeftY = 0.0f;
     float prevRightY = 0.0f;
@@ -57,21 +53,20 @@ public class LocomotionTechnique : MonoBehaviour
     public Transform leftSkate;
     public Transform rightSkate;
 
-    // Where skates rest (offsets from body center under HMD)
     public Vector3 leftFootLocalOffset = new Vector3(-0.12f, 0.03f, 0.05f);
     public Vector3 rightFootLocalOffset = new Vector3(0.12f, 0.03f, 0.05f);
 
     [Header("Skate Animation")]
-    public float strideLength = 0.30f;       // total front/back range in meters
-    public float strideFrequency = 2.2f;     // max cycles/sec at full speed
-    public float minFrequency = 0.6f;        // min cycles/sec at low speed
-    public float minSpeedToAnimate = 0.05f;  // minimum velocity to start stride animation (very low)
-    public float pushStrideBoost = 0.5f;     // extra stride from arm movement alone
+    public float strideLength = 0.30f;       
+    public float strideFrequency = 2.2f;     
+    public float minFrequency = 0.6f;        
+    public float minSpeedToAnimate = 0.05f;  
+    public float pushStrideBoost = 0.5f;     
 
     [Header("Skate Following (Body)")]
-    public float skateFollowPos = 18f;   // how fast skates follow target position (increased)
-    public float skateFollowRot = 14f;   // how fast skates follow target rotation (increased)
-    public float toeOutAngle = 4f;       // subtle outward stance (degrees)
+    public float skateFollowPos = 18f;  
+    public float skateFollowRot = 14f;   
+    public float toeOutAngle = 4f;       
 
     [Header("Skate Lean (Roll)")]
     public float maxLeanAngle = 18f;
@@ -85,7 +80,7 @@ public class LocomotionTechnique : MonoBehaviour
     public float minCantWhenMoving = 0.35f;
 
     [Header("Stride Gating")]
-    public float pushThreshold = 0.008f; // minimum effort to consider "pushing" (lowered for sensitivity)
+    public float pushThreshold = 0.008f;
 
     [Header("Wheel Roll (Optional)")]
     public float wheelRadius = 0.04f;
@@ -106,7 +101,6 @@ public class LocomotionTechnique : MonoBehaviour
 
     Vector3 velocity = Vector3.zero;
 
-    // For roomscale-follow + wheel roll + lean
     private Vector3 prevBodyCenter;
     private Vector3 prevYawDir = Vector3.forward;
     private float currentLean = 0f;
@@ -144,7 +138,7 @@ public class LocomotionTechnique : MonoBehaviour
     prevLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
     prevRightY = OVRInput.GetLocalControllerPosition(rightController).y;
 
-    // Initialize ground detection FIRST
+    // Initialize ground detection 
     Vector3 rayOrigin = transform.position + Vector3.up * 0.5f;
     RaycastHit hit;
     if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance))
@@ -162,7 +156,7 @@ public class LocomotionTechnique : MonoBehaviour
 
     SnapSkatesToBody(prevYawDir);
 
-        // Fire FX (children of skates)
+        // Fire FX 
         Vector3 leftFireOffset = new Vector3(-0.01f, -0.05f, 0f);
         Vector3 rightFireOffset = new Vector3(0.01f, -0.05f, 0f);
 
@@ -185,13 +179,12 @@ public class LocomotionTechnique : MonoBehaviour
 
     void Update()
     {
-        ////////////////////////////////////////////////////////////////////////////////////////////////////
         // Inputs
     leftTriggerValue  = OVRInput.Get(OVRInput.Axis1D.PrimaryHandTrigger, leftController);
     rightTriggerValue = OVRInput.Get(OVRInput.Axis1D.PrimaryHandTrigger, rightController);
 
      
-      // --- GROUND DETECTION ---
+      //  ground detection
     Vector3 rayOrigin = transform.position + Vector3.up * 0.5f;
     RaycastHit hit;
     if (Physics.SphereCast(rayOrigin, 0.2f, Vector3.down, out hit, groundCheckDistance, groundLayers))
@@ -211,12 +204,11 @@ public class LocomotionTechnique : MonoBehaviour
             isGrounded = false;
         }
     }
-        // -----------------------------------------------------------------------------------------------
-        // JUMP (both triggers + hands above head)
+        // JUMP 
         Vector3 leftPos = OVRInput.GetLocalControllerPosition(leftController);
         Vector3 rightPos = OVRInput.GetLocalControllerPosition(rightController);
 
-        // Use LOCAL head height (same space as GetLocalControllerPosition)
+        //  local head height 
         float headLocalY = (hmd != null) ? hmd.transform.localPosition.y : 0f;
 
         bool handsUp = leftPos.y >= headLocalY && rightPos.y >= headLocalY;
@@ -229,16 +221,13 @@ public class LocomotionTechnique : MonoBehaviour
 if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
     {
         verticalVelocity = jumpMagnitude;
-        isGrounded = false;  // Immediately set to not grounded
+        isGrounded = false;  
         playPropulsionSound();
         if (leftFire != null) leftFire.SetActive(true);
         if (rightFire != null) rightFire.SetActive(true);
     }
 
-    
-
-        // --- GRAVITY AND LANDING ---
-        if (!isGrounded)
+            if (!isGrounded)
         {
             verticalVelocity += gravity * Time.deltaTime;
         }
@@ -247,7 +236,6 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
             verticalVelocity = 0f;
             transform.position = new Vector3(transform.position.x, groundY + groundOffset, transform.position.z);
 
-            // Only turn off fire on actual landing (transition from air to ground)
             if (!wasGrounded)
             {
                 if (leftFire != null) leftFire.SetActive(false);
@@ -256,23 +244,10 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
             }
         }
 
-        wasGrounded = isGrounded;  // Track for next frame
+        wasGrounded = isGrounded; 
 
         transform.position += new Vector3(0, verticalVelocity * Time.deltaTime, 0);
 
-
-
-           // float currentLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
-        // float currentRightY = OVRInput.GetLocalControllerPosition(rightController).y;
-
-        // float leftDifference = Math.Abs(currentLeftY- prevLeftY);
-        // float rightDifference = Math.Abs(currentRightY- prevRightY);
-
-        // float effort = leftDifference + rightDifference;
-        // if (effort < 0.01f) effort = 0f;
-
-        // float newSpeed = walkingSpeed * Mathf.Clamp(effort * sensitivity, 0f, 1f);
-        // currentSpeed = Mathf.Lerp(currentSpeed, newSpeed, speedSmooth * Time.deltaTime);
          
         // WALK        
         // here im not using 20cm detection, we're always walking no matter the distance of the swinging  
@@ -283,7 +258,7 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
         float rightDifference = Math.Abs(currentRightY - prevRightY);
         float effort = leftDifference + rightDifference;
 
-        // Step sound gating
+        // Step sound 
         float stepThreshold = 0.008f;
         if (effort < stepThreshold)
         {
@@ -296,7 +271,7 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
             canPlayStep = false;
         }
 
-        // Push gating
+        // Push 
         float push01 = 0f;
         if (effort > pushThreshold)
             push01 = Mathf.Clamp01(effort * sensitivity);
@@ -305,7 +280,7 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
 
         // Inertia + friction
         float friction = 0.65f;
-           // inertia: velocity*= (1-friction * delta t) so that velocity reduces over time
+        // inertia: velocity*= (1-friction * delta t) so that velocity reduces over time
         // we then add the acceleration * delta t * direction of head 
         // which is the current acceleration 
         float damp = Mathf.Clamp01(1f - friction * Time.deltaTime);
@@ -314,19 +289,13 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
         Vector3 flatForward = GetHmdYawDir();
         velocity += flatForward * acceleration * Time.deltaTime;
 
-        // Apply horizontal movement
         transform.position += velocity * Time.deltaTime;
 
         prevLeftY = currentLeftY;
         prevRightY = currentRightY;
 
-        // -----------------------------------------------------------------------------------------------
-        // SKATE VISUALS
+        // Skates
         AnimateSkates(push01);
-
-
-
-
 
        // PROF'S CODE
         // if (leftTriggerValue > 0.95f && rightTriggerValue > 0.95f)
@@ -397,9 +366,7 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
             propulsionAudio.Stop();
     }
 
-    // ==========================
     // Skate helpers
-    // ==========================
     private Vector3 GetHmdYawDir()
     {
         Vector3 dir = Vector3.forward;
@@ -454,11 +421,11 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
 {
     if (leftSkate == null || rightSkate == null) return;
 
-    // --- 1) Calculate current speed ---
+    //  Calculate current speed 
     float planarSpeed = Vector3.ProjectOnPlane(velocity, Vector3.up).magnitude;
     float speed01 = Mathf.Clamp01(planarSpeed / Mathf.Max(walkingSpeed, 0.001f));
 
-    // --- 2) Get directions ---
+    // Get directions
     Vector3 center = GetBodyCenter();
     Vector3 yawDir = GetHmdYawDir();
     if (yawDir.sqrMagnitude < 0.0001f) yawDir = Vector3.forward;
@@ -466,7 +433,7 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
 
     Vector3 right = Vector3.Cross(Vector3.up, yawDir).normalized;
 
-    // Movement direction for stride (use velocity if moving, else yaw)
+    // Movement direction for stride 
     Vector3 strideDir = yawDir;
     if (velocity.sqrMagnitude > 0.01f)
     {
@@ -474,7 +441,6 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
         if (strideDir.sqrMagnitude < 0.0001f) strideDir = yawDir;
     }
 
-    // --- 3) Compute stride offsets based on VELOCITY + PUSH EFFORT ---
     float targetStrideLeft = 0f;
     float targetStrideRight = 0f;
 
@@ -507,7 +473,7 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
     currentStrideLeft = Mathf.Lerp(currentStrideLeft, targetStrideLeft, strideSmooth * Time.deltaTime);
     currentStrideRight = Mathf.Lerp(currentStrideRight, targetStrideRight, strideSmooth * Time.deltaTime);
 
-    // --- 4) Calculate BASE positions (without Y - we'll raycast for that) ---
+    // Calculate BASE positions
     Vector3 leftBaseXZ = center 
         + right * leftFootLocalOffset.x 
         + yawDir * leftFootLocalOffset.z;
@@ -516,41 +482,37 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
         + right * rightFootLocalOffset.x 
         + yawDir * rightFootLocalOffset.z;
 
-    // Add stride offset along movement direction
     Vector3 leftTargetXZ = leftBaseXZ + strideDir * currentStrideLeft;
     Vector3 rightTargetXZ = rightBaseXZ + strideDir * currentStrideRight;
 
-    // --- 5) RAYCAST to find actual ground height for each skate ---
+    // RAYCAST to find actual ground height for each skate 
     float leftGroundY = GetGroundHeightAt(leftTargetXZ);
     float rightGroundY = GetGroundHeightAt(rightTargetXZ);
 
-    // Position skates ON TOP of the detected ground
-float debugLift = 0.2f; // 50 cm ABOVE ground (very obvious)
+    float debugLift = 0.2f; 
 
-Vector3 leftTarget = new Vector3(
-    leftTargetXZ.x,
-    leftGroundY + debugLift,
-    leftTargetXZ.z
-);
+    Vector3 leftTarget = new Vector3(
+        leftTargetXZ.x,
+        leftGroundY + debugLift,
+        leftTargetXZ.z
+    );
 
-Vector3 rightTarget = new Vector3(
-    rightTargetXZ.x,
-    rightGroundY + debugLift,
-    rightTargetXZ.z
-);
+    Vector3 rightTarget = new Vector3(
+        rightTargetXZ.x,
+        rightGroundY + debugLift,
+        rightTargetXZ.z
+    );
 
 
-    // --- 6) Smooth position interpolation ---
+    // Smooth position interpolation 
     leftSkate.position = Vector3.Lerp(leftSkate.position, leftTarget, skateFollowPos * Time.deltaTime);
     rightSkate.position = Vector3.Lerp(rightSkate.position, rightTarget, skateFollowPos * Time.deltaTime);
 
-    // --- 7) Activity factor for cant ---
     float activity01 = Mathf.Max(push01, speed01);
     float cantFactor = (activity01 > 0.01f)
         ? Mathf.Lerp(0f, 1f, Mathf.Max(minCantWhenMoving, activity01))
         : 0f;
 
-    // --- 8) Turning lean ---
     float signedTurn = Vector3.SignedAngle(prevYawDir, yawDir, Vector3.up);
     float turnRate = signedTurn / Mathf.Max(Time.deltaTime, 0.0001f);
 
@@ -558,7 +520,7 @@ Vector3 rightTarget = new Vector3(
     currentLean = Mathf.Lerp(currentLean, targetLean, leanSmooth * Time.deltaTime);
     prevYawDir = yawDir;
 
-    // --- 9) Build final rotations ---
+    //  Build final rotations 
     Quaternion yawQ = Quaternion.LookRotation(yawDir, Vector3.up);
 
     Quaternion toeL = Quaternion.AngleAxis(-toeOutAngle, Vector3.up);
@@ -576,7 +538,6 @@ Vector3 rightTarget = new Vector3(
     leftSkate.rotation = Quaternion.Slerp(leftSkate.rotation, leftRotTarget, skateFollowRot * Time.deltaTime);
     rightSkate.rotation = Quaternion.Slerp(rightSkate.rotation, rightRotTarget, skateFollowRot * Time.deltaTime);
 
-    // --- 10) Wheel roll ---
     Vector3 delta = center - prevBodyCenter;
     float planarDistance = Vector3.ProjectOnPlane(delta, Vector3.up).magnitude;
     prevBodyCenter = center;
@@ -585,25 +546,21 @@ Vector3 rightTarget = new Vector3(
     RollWheels(rightWheels, planarDistance);
 }
 
-// NEW HELPER METHOD - Add this to your class
 private float GetGroundHeightAt(Vector3 position)
 {
     Vector3 rayOrigin = new Vector3(position.x, transform.position.y + 2f, position.z);
     RaycastHit hit;
     
-    // Try with ground layers first
     if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance + 3f, groundLayers))
     {
         return hit.point.y;
     }
     
-    // Fallback: raycast without layer mask (hits everything)
     if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance + 3f))
     {
         return hit.point.y;
     }
     
-    // Last fallback
     return transform.position.y;
 }
     private void RollWheels(Transform[] wheels, float distance)
@@ -622,7 +579,6 @@ private float GetGroundHeightAt(Vector3 position)
     void OnTriggerEnter(Collider other)
     {
 
-        // These are for the game mechanism.
         if (other.CompareTag("banner"))
         {
             stage = other.gameObject.name;
@@ -634,7 +590,6 @@ private float GetGroundHeightAt(Vector3 position)
             selectionTaskMeasure.scoreText.text = "";
             selectionTaskMeasure.partSumErr = 0f;
             selectionTaskMeasure.partSumTime = 0f;
-            // rotation: facing the user's entering direction
             float tempValueY = other.transform.position.y > 0 ? 12 : 0;
             Vector3 tmpTarget = new(hmd.transform.position.x, tempValueY, hmd.transform.position.z);
             selectionTaskMeasure.taskUI.transform.LookAt(tmpTarget);
@@ -647,6 +602,5 @@ private float GetGroundHeightAt(Vector3 position)
             GetComponent<AudioSource>().Play();
             other.gameObject.SetActive(false);
         }
-                // These are for the game mechanism.
     }
 }
