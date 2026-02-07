@@ -82,10 +82,6 @@ public class LocomotionTechnique : MonoBehaviour
     [Header("Stride Gating")]
     public float pushThreshold = 0.008f;
 
-    [Header("Wheel Roll (Optional)")]
-    public float wheelRadius = 0.04f;
-    public Transform[] leftWheels;
-    public Transform[] rightWheels;
 
     // Internal stride state
     private float skatePhase = 0f;
@@ -538,12 +534,7 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
     leftSkate.rotation = Quaternion.Slerp(leftSkate.rotation, leftRotTarget, skateFollowRot * Time.deltaTime);
     rightSkate.rotation = Quaternion.Slerp(rightSkate.rotation, rightRotTarget, skateFollowRot * Time.deltaTime);
 
-    Vector3 delta = center - prevBodyCenter;
-    float planarDistance = Vector3.ProjectOnPlane(delta, Vector3.up).magnitude;
     prevBodyCenter = center;
-
-    RollWheels(leftWheels, planarDistance);
-    RollWheels(rightWheels, planarDistance);
 }
 
 private float GetGroundHeightAt(Vector3 position)
@@ -563,18 +554,6 @@ private float GetGroundHeightAt(Vector3 position)
     
     return transform.position.y;
 }
-    private void RollWheels(Transform[] wheels, float distance)
-    {
-        if (wheels == null || wheels.Length == 0) return;
-        if (wheelRadius <= 0.0001f) return;
-
-        float degrees = (distance / wheelRadius) * Mathf.Rad2Deg;
-        for (int i = 0; i < wheels.Length; i++)
-        {
-            if (wheels[i] == null) continue;
-            wheels[i].Rotate(Vector3.right, degrees, Space.Self);
-        }
-    }
 
     void OnTriggerEnter(Collider other)
     {
