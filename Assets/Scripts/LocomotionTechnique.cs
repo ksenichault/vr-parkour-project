@@ -16,7 +16,7 @@ public class LocomotionTechnique : MonoBehaviour
     public float groundOffset = 0.02f;
     public LayerMask groundLayers;
     
-
+    // for walking and jumping
     private bool isGrounded = false;
     private float groundY = 0f;
     [Header("Locomotion Tuning")]
@@ -91,6 +91,7 @@ public class LocomotionTechnique : MonoBehaviour
     private GameObject leftFire;
     private GameObject rightFire;
 
+    // SOUNDS 
     private GameObject fireEffectPrefab;
     private GameObject stepAudioPrefab;
     private GameObject propulsionAudioPrefab;
@@ -131,28 +132,29 @@ public class LocomotionTechnique : MonoBehaviour
     void Start()
     {
         
-    prevLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
-    prevRightY = OVRInput.GetLocalControllerPosition(rightController).y;
+        prevLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
+        prevRightY = OVRInput.GetLocalControllerPosition(rightController).y;
 
-    // Initialize ground detection 
-    Vector3 rayOrigin = transform.position + Vector3.up * 0.5f;
-    RaycastHit hit;
-    if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance))
-    {
-        groundY = hit.point.y;
-    }
-    else
-    {
-        groundY = transform.position.y;
-    }
+        // Initialize ground detection 
+        Vector3 rayOrigin = transform.position + Vector3.up * 0.5f;
+        RaycastHit hit;
+        if (Physics.Raycast(rayOrigin, Vector3.down, out hit, groundCheckDistance))
+        {
+            groundY = hit.point.y;
+        }
+        else
+        {
+            groundY = transform.position.y;
+        }
 
-    prevBodyCenter = GetBodyCenter();
-    prevYawDir = GetHmdYawDir();
-    if (prevYawDir.sqrMagnitude < 0.0001f) prevYawDir = Vector3.forward;
+        prevBodyCenter = GetBodyCenter();
+        prevYawDir = GetHmdYawDir();
+        if (prevYawDir.sqrMagnitude < 0.0001f) prevYawDir = Vector3.forward;
 
-    SnapSkatesToBody(prevYawDir);
+        SnapSkatesToBody(prevYawDir);
 
-        // Fire FX 
+        // FIRE EFFECT
+        // creates instances to each roller skate
         Vector3 leftFireOffset = new Vector3(-0.01f, -0.05f, 0f);
         Vector3 rightFireOffset = new Vector3(0.01f, -0.05f, 0f);
 
@@ -209,24 +211,24 @@ public class LocomotionTechnique : MonoBehaviour
 
         bool handsUp = leftPos.y >= headLocalY && rightPos.y >= headLocalY;
 
+        bool canJump = isGrounded && verticalVelocity <= 0.1f;
 
-    bool canJump = isGrounded && verticalVelocity <= 0.1f;
+        // if we press buttons on both controllers + hands above headset + grounded and vertical velocity=0
+        if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
+        {
+            verticalVelocity = jumpMagnitude;
+            isGrounded = false;  
+            playPropulsionSound();
+            if (leftFire != null) leftFire.SetActive(true);
+            if (rightFire != null) rightFire.SetActive(true);
+        }
 
-    Debug.Log($"JUMP grounded={isGrounded} vv={verticalVelocity:F2} handsUp={handsUp} LT={leftTriggerValue:F2} RT={rightTriggerValue:F2}");
-
-if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
-    {
-        verticalVelocity = jumpMagnitude;
-        isGrounded = false;  
-        playPropulsionSound();
-        if (leftFire != null) leftFire.SetActive(true);
-        if (rightFire != null) rightFire.SetActive(true);
-    }
-
-            if (!isGrounded)
+        // in the air, we apply gravity
+        if (!isGrounded)
         {
             verticalVelocity += gravity * Time.deltaTime;
         }
+        // if we finished jumping, we snap the position to the ground, and stop the sound and fire effect
         else if (verticalVelocity <= 0f)
         {
             verticalVelocity = 0f;
@@ -246,7 +248,8 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
 
          
         // WALK        
-        // here im not using 20cm detection, we're always walking no matter the distance of the swinging  
+        // we compute the difference between the controllers' position and the previous positio
+        // it gives us the strength of a step 
         float currentLeftY = OVRInput.GetLocalControllerPosition(leftController).y;
         float currentRightY = OVRInput.GetLocalControllerPosition(rightController).y;
 
@@ -254,24 +257,25 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
         float rightDifference = Math.Abs(currentRightY - prevRightY);
         float effort = leftDifference + rightDifference;
 
-        // Step sound 
-        float stepThreshold = 0.008f;
+        float stepThreshold = 0.008f; // threshold to avoid walking if we move slightly the controllers
         if (effort < stepThreshold)
         {
             effort = 0f;
-            canPlayStep = true;
+            canPlayStep = true; // this boolean makes sure we don't call the playStepSound every time we move, but only when the sound is done playing, to avoid overwhelming the player
         }
+        // Step sound 
         if (effort > 0f && canPlayStep)
         {
             playStepSound();
             canPlayStep = false;
         }
 
-        // Push 
+        // we transform our effort computed above to a push variable, multiplying by our variable sensitivity
         float push01 = 0f;
         if (effort > pushThreshold)
             push01 = Mathf.Clamp01(effort * sensitivity);
 
+        // we get the acceleration
         float acceleration = walkingSpeed * push01;
 
         // Inertia + friction
@@ -293,49 +297,6 @@ if (leftTriggerValue > 0.75f && rightTriggerValue > 0.75f && handsUp && canJump)
         // Skates
         AnimateSkates(push01);
 
-       // PROF'S CODE
-        // if (leftTriggerValue > 0.95f && rightTriggerValue > 0.95f)
-        // {
-        //     if (!isIndexTriggerDown)
-        //     {
-        //         isIndexTriggerDown = true;
-        //         startPos = (OVRInput.GetLocalControllerPosition(leftController) + OVRInput.GetLocalControllerPosition(rightController)) / 2;
-        //     }
-        //     offset = hmd.transform.forward.normalized *
-        //             (OVRInput.GetLocalControllerPosition(leftController) - startPos +
-        //             (OVRInput.GetLocalControllerPosition(rightController) - startPos)).magnitude;
-        //     Debug.DrawRay(startPos, offset, Color.red, 0.2f);
-        // }
-        // else if (leftTriggerValue > 0.95f && rightTriggerValue < 0.95f)
-        // {
-        //     if (!isIndexTriggerDown)
-        //     {
-        //         isIndexTriggerDown = true;
-        //         startPos = OVRInput.GetLocalControllerPosition(leftController);
-        //     }
-        //     offset = hmd.transform.forward.normalized *
-        //              (OVRInput.GetLocalControllerPosition(leftController) - startPos).magnitude;
-        //     Debug.DrawRay(startPos, offset, Color.red, 0.2f);
-        // }
-        // else if (leftTriggerValue < 0.95f && rightTriggerValue > 0.95f)
-        // {
-        //     if (!isIndexTriggerDown)
-        //     {
-        //         isIndexTriggerDown = true;
-        //         startPos = OVRInput.GetLocalControllerPosition(rightController);
-        //     }
-        //    offset = hmd.transform.forward.normalized *
-        //             (OVRInput.GetLocalControllerPosition(rightController) - startPos).magnitude;
-        //     Debug.DrawRay(startPos, offset, Color.red, 0.2f);
-        // }
-        // else
-        // {
-        //     if (isIndexTriggerDown)
-        //     {
-        //         isIndexTriggerDown = false;
-        //         offset = Vector3.zero;
-        //     }
-        // }
 
         if (OVRInput.Get(OVRInput.Button.Two) || OVRInput.Get(OVRInput.Button.Four))
         {
